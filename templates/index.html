@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Friends MiniApp</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <h1>Friends Grid</h1>
+          <p class="subtitle">Organize your people by gyms, schools, projects, or anything else.</p>
+        </div>
+        <div id="user-badge" class="badge hidden"></div>
+      </header>
+
+      <section id="dev-banner" class="dev-banner hidden">
+        <p>Dev mode: Telegram user id not found. Enter it to continue.</p>
+        <div class="dev-input">
+          <input id="dev-tg-id" type="number" min="1" placeholder="Telegram user id" />
+          <button id="dev-continue">Continue</button>
+        </div>
+      </section>
+
+      <main class="layout">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Grids</h2>
+              <p class="muted">Your categories</p>
+            </div>
+            <button id="new-grid-btn" class="primary">+ Grid</button>
+          </div>
+          <div id="grids-list" class="grid-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 id="people-title">People</h2>
+              <p id="people-subtitle" class="muted">Pick a grid to see who is inside.</p>
+            </div>
+            <button id="new-person-btn" class="primary">+ Person</button>
+          </div>
+          <div id="people-list" class="people-list"></div>
+        </section>
+      </main>
+
+      <section id="empty-state" class="empty-state">
+        <h3>Select a grid to see people</h3>
+        <p>Create your first grid to get started.</p>
+      </section>
+    </div>
+
+    <div id="modal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-title"></h3>
+          <button id="modal-close" class="icon-button">x</button>
+        </div>
+        <form id="modal-form"></form>
+      </div>
+    </div>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
