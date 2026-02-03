@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -51,8 +51,8 @@ class TgUser(Base):
     tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    grids: Mapped[list["Grid"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    people: Mapped[list["Person"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    grids: Mapped[List["Grid"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    people: Mapped[List["Person"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Grid(Base):
@@ -66,7 +66,7 @@ class Grid(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[TgUser] = relationship(back_populates="grids")
-    people: Mapped[list["Person"]] = relationship(
+    people: Mapped[List["Person"]] = relationship(
         back_populates="grid",
         passive_deletes=True,
     )
@@ -82,7 +82,7 @@ class Person(Base):
         nullable=True,
     )
     full_name: Mapped[str] = mapped_column(String(120))
-    fields: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    fields: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[TgUser] = relationship(back_populates="people")
@@ -144,20 +144,20 @@ class GridOut(BaseModel):
 class PersonCreate(BaseModel):
     tg_id: int
     full_name: str = Field(..., min_length=1, max_length=120)
-    fields: dict[str, Any] = Field(default_factory=dict)
+    fields: Dict[str, Any] = Field(default_factory=dict)
     grid_id: Optional[int] = None
 
 
 class PersonUpdate(BaseModel):
     full_name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    fields: Optional[dict[str, Any]] = None
+    fields: Optional[Dict[str, Any]] = None
     grid_id: Optional[int] = None
 
 
 class PersonOut(BaseModel):
     id: int
     full_name: str
-    fields: dict[str, Any]
+    fields: Dict[str, Any]
     grid_id: Optional[int]
 
 
@@ -177,7 +177,7 @@ async def index(request: Request) -> HTMLResponse:
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+async def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
@@ -274,7 +274,7 @@ async def delete_grid(
     grid_id: int,
     tg_id: int = Query(..., ge=1),
     session: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
+) -> Dict[str, str]:
     user = await get_or_create_user(session, tg_id)
     result = await session.execute(select(Grid).where(Grid.id == grid_id, Grid.user_id == user.id))
     grid = result.scalar_one_or_none()
@@ -383,7 +383,7 @@ async def delete_person(
     person_id: int,
     tg_id: int = Query(..., ge=1),
     session: AsyncSession = Depends(get_session),
-) -> dict[str, str]:
+) -> Dict[str, str]:
     user = await get_or_create_user(session, tg_id)
     result = await session.execute(select(Person).where(Person.id == person_id, Person.user_id == user.id))
     person = result.scalar_one_or_none()
