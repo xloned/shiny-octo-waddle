@@ -181,11 +181,11 @@ async def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/grids", response_model=list[GridOut])
+@app.get("/api/grids", response_model=List[GridOut])
 async def list_grids(
     tg_id: int = Query(..., ge=1),
     session: AsyncSession = Depends(get_session),
-) -> list[GridOut]:
+) -> List[GridOut]:
     user = await get_or_create_user(session, tg_id)
     result = await session.execute(
         select(
@@ -287,12 +287,12 @@ async def delete_grid(
     return {"status": "deleted"}
 
 
-@app.get("/api/people", response_model=list[PersonOut])
+@app.get("/api/people", response_model=List[PersonOut])
 async def list_people(
     tg_id: int = Query(..., ge=1),
     grid_id: Optional[int] = Query(default=None),
     session: AsyncSession = Depends(get_session),
-) -> list[PersonOut]:
+) -> List[PersonOut]:
     user = await get_or_create_user(session, tg_id)
     stmt = select(Person).where(Person.user_id == user.id)
     if grid_id is not None:
