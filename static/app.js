@@ -10,20 +10,10 @@ const devBanner = document.getElementById("dev-banner");
 const devInput = document.getElementById("dev-tg-id");
 const devContinue = document.getElementById("dev-continue");
 
-const modal = document.getElementById("modal");
-const modalTitle = document.getElementById("modal-title");
-const modalForm = document.getElementById("modal-form");
-const modalClose = document.getElementById("modal-close");
-
-const newGridBtn = document.getElementById("new-grid-btn");
-const newPersonBtn = document.getElementById("new-person-btn");
-
 let tgId = null;
 let grids = [];
 let people = [];
 let currentGridId = null;
-let editingGridId = null;
-let editingPersonId = null;
 
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
@@ -120,17 +110,11 @@ function renderGrids() {
         </div>
       </div>
       <div class="grid-actions">
-        <button class="secondary" data-action="edit">Edit</button>
         <button class="ghost danger" data-action="delete">Delete</button>
       </div>
     `;
     card.addEventListener("click", (event) => {
       const action = event.target.dataset.action;
-      if (action === "edit") {
-        event.stopPropagation();
-        openGridModal(grid);
-        return;
-      }
       if (action === "delete") {
         event.stopPropagation();
         deleteGrid(grid.id);
@@ -172,18 +156,12 @@ function renderPeople() {
       <div class="person-name">${escapeHTML(person.full_name)}</div>
       <div class="field-list">${fieldItems || "No extra fields"}</div>
       <div class="person-actions">
-        <button class="secondary" data-action="edit">Edit</button>
         <button class="ghost danger" data-action="delete">Delete</button>
       </div>
     `;
 
     card.addEventListener("click", (event) => {
       const action = event.target.dataset.action;
-      if (action === "edit") {
-        event.stopPropagation();
-        openPersonModal(person);
-        return;
-      }
       if (action === "delete") {
         event.stopPropagation();
         deletePerson(person.id);
@@ -211,194 +189,6 @@ function updatePeopleHeader() {
     peopleTitle.textContent = "People";
     peopleSubtitle.textContent = "Pick a grid to see who is inside.";
   }
-}
-
-function openModal(title) {
-  modalTitle.textContent = title;
-  modal.classList.remove("hidden");
-}
-
-function closeModal() {
-  modal.classList.add("hidden");
-  modalForm.innerHTML = "";
-  editingGridId = null;
-  editingPersonId = null;
-}
-
-function openGridModal(grid = null) {
-  editingGridId = grid ? grid.id : null;
-  modalForm.className = "modal-form";
-  modalForm.innerHTML = `
-    <label>
-      Title
-      <input name="title" required value="${grid ? escapeHTML(grid.title) : ""}" />
-    </label>
-    <label>
-      Description
-      <textarea name="description" rows="3">${grid && grid.description ? escapeHTML(grid.description) : ""}</textarea>
-    </label>
-    <label>
-      Color
-      <input name="color" type="color" value="${grid ? grid.color : "#2d6cdf"}" />
-    </label>
-    <div class="modal-actions">
-      <button type="button" class="ghost" id="grid-cancel">Cancel</button>
-      <button type="submit" class="primary">Save</button>
-    </div>
-  `;
-
-  modalForm.onsubmit = async (event) => {
-    event.preventDefault();
-    const formData = new FormData(modalForm);
-    const payload = {
-      tg_id: tgId,
-      title: formData.get("title"),
-      description: formData.get("description"),
-      color: formData.get("color"),
-    };
-    try {
-      if (editingGridId) {
-        await fetchJson(
-          `${API_BASE}/grids/${editingGridId}?tg_id=${tgId}`,
-          {
-            method: "PUT",
-            body: JSON.stringify({
-              title: payload.title,
-              description: payload.description,
-              color: payload.color,
-            }),
-          }
-        );
-      } else {
-        await fetchJson(`${API_BASE}/grids`, {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      }
-      await loadGrids();
-      closeModal();
-    } catch (error) {
-      alert(error.message);
-    }
-  };
-
-  document.getElementById("grid-cancel").onclick = closeModal;
-  openModal(grid ? "Edit grid" : "New grid");
-}
-
-function openPersonModal(person = null) {
-  editingPersonId = person ? person.id : null;
-  modalForm.className = "modal-form";
-  const options = [
-    `<option value="">Unassigned</option>`,
-    ...grids.map(
-      (grid) =>
-        `<option value="${grid.id}">${escapeHTML(grid.title)}</option>`
-    ),
-  ].join("");
-
-  modalForm.innerHTML = `
-    <label>
-      Full name
-      <input name="full_name" required value="${person ? escapeHTML(person.full_name) : ""}" />
-    </label>
-    <label>
-      Grid
-      <select name="grid_id">${options}</select>
-    </label>
-    <div class="fields-block">
-      <div class="fields-header">
-        <span>Extra fields</span>
-        <button type="button" id="add-field-btn" class="secondary">+ Field</button>
-      </div>
-      <div id="fields-container"></div>
-    </div>
-    <div class="modal-actions">
-      <button type="button" class="ghost" id="person-cancel">Cancel</button>
-      <button type="submit" class="primary">Save</button>
-    </div>
-  `;
-
-  const gridSelect = modalForm.querySelector("select[name='grid_id']");
-  if (person && person.grid_id) {
-    gridSelect.value = String(person.grid_id);
-  } else if (currentGridId) {
-    gridSelect.value = String(currentGridId);
-  }
-
-  const fieldsContainer = modalForm.querySelector("#fields-container");
-  const addFieldBtn = modalForm.querySelector("#add-field-btn");
-
-  function addFieldRow(key = "", value = "") {
-    const row = document.createElement("div");
-    row.className = "field-row";
-    row.innerHTML = `
-      <input class="field-key" placeholder="Label" value="${escapeHTML(key)}" />
-      <input class="field-value" placeholder="Value" value="${escapeHTML(value)}" />
-      <button type="button" class="ghost danger" data-action="remove">Remove</button>
-    `;
-    row.querySelector("[data-action='remove']").onclick = () => row.remove();
-    fieldsContainer.appendChild(row);
-  }
-
-  if (person && person.fields && Object.keys(person.fields).length) {
-    Object.entries(person.fields).forEach(([key, value]) => addFieldRow(key, String(value)));
-  } else {
-    addFieldRow();
-  }
-
-  addFieldBtn.onclick = () => addFieldRow();
-
-  modalForm.onsubmit = async (event) => {
-    event.preventDefault();
-    const formData = new FormData(modalForm);
-    const gridValue = formData.get("grid_id");
-    const fields = {};
-    fieldsContainer.querySelectorAll(".field-row").forEach((row) => {
-      const key = row.querySelector(".field-key").value.trim();
-      const value = row.querySelector(".field-value").value.trim();
-      if (key) {
-        fields[key] = value;
-      }
-    });
-
-    const payload = {
-      tg_id: tgId,
-      full_name: formData.get("full_name"),
-      fields,
-      grid_id: gridValue ? Number(gridValue) : null,
-    };
-
-    try {
-      if (editingPersonId) {
-        await fetchJson(
-          `${API_BASE}/people/${editingPersonId}?tg_id=${tgId}`,
-          {
-            method: "PUT",
-            body: JSON.stringify({
-              full_name: payload.full_name,
-              fields: payload.fields,
-              grid_id: payload.grid_id,
-            }),
-          }
-        );
-      } else {
-        await fetchJson(`${API_BASE}/people`, {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      }
-
-      await loadGrids();
-      await loadPeople();
-      closeModal();
-    } catch (error) {
-      alert(error.message);
-    }
-  };
-
-  document.getElementById("person-cancel").onclick = closeModal;
-  openModal(person ? "Edit person" : "New person");
 }
 
 async function deleteGrid(gridId) {
@@ -460,15 +250,5 @@ async function initialize() {
     await loadPeople();
   }
 }
-
-modalClose.onclick = closeModal;
-modal.addEventListener("click", (event) => {
-  if (event.target === modal) {
-    closeModal();
-  }
-});
-
-newGridBtn.onclick = () => openGridModal();
-newPersonBtn.onclick = () => openPersonModal();
 
 initialize();
