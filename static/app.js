@@ -1,4 +1,5 @@
 const API_BASE = "/api";
+const MAX_CUSTOM_FIELDS = 20;
 
 const map = document.getElementById("map");
 const mapViewport = document.getElementById("map-viewport");
@@ -148,6 +149,89 @@ function shortLabel(text, limit = 8) {
     return safe;
   }
   return `${safe.slice(0, limit - 1)}...`;
+}
+
+function buildCustomFieldRow(field = {}) {
+  const row = document.createElement("div");
+  row.className = "field-row";
+  row.innerHTML = `
+    <input class="field-label" type="text" placeholder="Field name" maxlength="40" />
+    <input class="field-value" type="text" placeholder="Value" maxlength="80" />
+    <button type="button" class="icon-button field-remove" aria-label="Remove field">x</button>
+  `;
+  const labelInput = row.querySelector(".field-label");
+  const valueInput = row.querySelector(".field-value");
+  if (labelInput && field.label) {
+    labelInput.value = field.label;
+  }
+  if (valueInput && field.value) {
+    valueInput.value = field.value;
+  }
+  return row;
+}
+
+function collectCustomFields(container) {
+  if (!container) {
+    return [];
+  }
+  const rows = Array.from(container.querySelectorAll(".field-row"));
+  const fields = rows
+    .map((row) => {
+      const label = row.querySelector(".field-label")?.value.trim();
+      const value = row.querySelector(".field-value")?.value.trim() || "";
+      if (!label) {
+        return null;
+      }
+      return { label, value };
+    })
+    .filter(Boolean);
+  return fields.slice(0, MAX_CUSTOM_FIELDS);
+}
+
+function setupCustomFields(container, countEl, addBtn, initialFields = []) {
+  if (!container) {
+    return () => [];
+  }
+
+  const updateState = () => {
+    const count = container.querySelectorAll(".field-row").length;
+    if (countEl) {
+      countEl.textContent = `${count}/${MAX_CUSTOM_FIELDS}`;
+    }
+    if (addBtn) {
+      addBtn.disabled = count >= MAX_CUSTOM_FIELDS;
+    }
+  };
+
+  const addRow = (field = {}) => {
+    const count = container.querySelectorAll(".field-row").length;
+    if (count >= MAX_CUSTOM_FIELDS) {
+      return;
+    }
+    const row = buildCustomFieldRow(field);
+    const removeBtn = row.querySelector(".field-remove");
+    if (removeBtn) {
+      removeBtn.addEventListener("click", () => {
+        row.remove();
+        updateState();
+      });
+    }
+    container.appendChild(row);
+    updateState();
+  };
+
+  if (Array.isArray(initialFields)) {
+    initialFields.slice(0, MAX_CUSTOM_FIELDS).forEach((field) => {
+      addRow(field);
+    });
+  }
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => addRow());
+  }
+
+  updateState();
+  return () => collectCustomFields(container);
 }
 
 function drawLine(from, to, className) {
@@ -557,6 +641,7 @@ function closeSheet() {
 
 function openSheet(type) {
   sheetTitle.textContent = type === "grid" ? "New grid" : "New person";
+  let getCustomFields = () => [];
   if (type === "grid") {
     sheetForm.innerHTML = `
       <label>
@@ -597,11 +682,29 @@ function openSheet(type) {
         Grid
         <select name="grid_id">${options}</select>
       </label>
+      <div class="field-group">
+        <div class="field-header">
+          <div class="field-title">
+            <span>Custom fields</span>
+            <span id="custom-fields-count" class="field-count">0/${MAX_CUSTOM_FIELDS}</span>
+          </div>
+          <button type="button" class="ghost compact" id="add-field">Add field</button>
+        </div>
+        <div id="custom-fields" class="field-list"></div>
+        <p class="field-hint">
+          Up to ${MAX_CUSTOM_FIELDS} fields like favorite color, job, or date of birth.
+        </p>
+      </div>
       <div class="sheet-actions">
         <button type="button" class="ghost" id="sheet-cancel">Cancel</button>
         <button type="submit" class="primary">Add person</button>
       </div>
     `;
+
+    const fieldsContainer = sheetForm.querySelector("#custom-fields");
+    const fieldsCount = sheetForm.querySelector("#custom-fields-count");
+    const addFieldBtn = sheetForm.querySelector("#add-field");
+    getCustomFields = setupCustomFields(fieldsContainer, fieldsCount, addFieldBtn);
   }
 
   sheetForm.onsubmit = async (event) => {
@@ -623,12 +726,17 @@ function openSheet(type) {
       } else {
         const emojiInput = String(formData.get("emoji") || "").trim();
         const gridValue = formData.get("grid_id");
+        const customFields = getCustomFields();
+        const fieldsPayload = {
+          emoji: emojiInput || "🙂",
+        };
+        if (customFields.length) {
+          fieldsPayload.custom_fields = customFields;
+        }
         const payload = {
           tg_id: tgId,
           full_name: formData.get("full_name"),
-          fields: {
-            emoji: emojiInput || "🙂",
-          },
+          fields: fieldsPayload,
           grid_id: gridValue ? Number(gridValue) : null,
         };
         await fetchJson(`${API_BASE}/people`, {

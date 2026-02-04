@@ -51,6 +51,9 @@ WEBAPP_URL = os.getenv("WEBAPP_URL") or os.getenv("BASE_URL") or "http://localho
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
 
+MAX_CUSTOM_FIELDS = 20
+CUSTOM_FIELDS_KEY = "custom_fields"
+
 
 class Base(DeclarativeBase):
     pass
@@ -143,6 +146,35 @@ async def get_or_create_user(session: AsyncSession, tg_id: int) -> TgUser:
         return result.scalar_one()
     await session.refresh(user)
     return user
+
+
+def normalize_person_fields(fields: Dict[str, Any]) -> Dict[str, Any]:
+    if not fields:
+        return {}
+    if not isinstance(fields, dict):
+        raise HTTPException(status_code=400, detail="Invalid fields payload")
+    custom_fields = fields.get(CUSTOM_FIELDS_KEY)
+    if custom_fields is None:
+        return fields
+    if not isinstance(custom_fields, list):
+        raise HTTPException(status_code=400, detail="custom_fields must be a list")
+
+    normalized: List[Dict[str, str]] = []
+    for item in custom_fields:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="custom_fields entries must be objects")
+        label = str(item.get("label", "")).strip()
+        value = str(item.get("value", "")).strip()
+        if not label:
+            continue
+        normalized.append({"label": label, "value": value})
+
+    if len(normalized) > MAX_CUSTOM_FIELDS:
+        raise HTTPException(status_code=400, detail="Too many custom fields")
+
+    updated = dict(fields)
+    updated[CUSTOM_FIELDS_KEY] = normalized
+    return updated
 
 
 class GridCreate(BaseModel):
@@ -442,11 +474,12 @@ async def create_person(
         if not grid_result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="Grid not found")
 
+    fields = normalize_person_fields(payload.fields or {})
     person = Person(
         user_id=user.id,
         grid_id=grid_id,
         full_name=payload.full_name.strip(),
-        fields=payload.fields or {},
+        fields=fields,
     )
     session.add(person)
     await session.commit()
@@ -486,7 +519,7 @@ async def update_person(
     if payload.full_name is not None:
         person.full_name = payload.full_name.strip()
     if payload.fields is not None:
-        person.fields = payload.fields
+        person.fields = normalize_person_fields(payload.fields or {})
 
     await session.commit()
     return PersonOut(
