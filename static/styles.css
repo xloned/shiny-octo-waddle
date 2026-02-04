@@ -144,6 +144,7 @@ body {
   color: #6b3d00;
   font-size: 18px;
   border: 2px solid #fff;
+  cursor: pointer;
 }
 
 .dev-banner {
@@ -282,6 +283,82 @@ button {
   gap: 12px;
 }
 
+.person-card {
+  display: grid;
+  gap: 14px;
+}
+
+.person-hero {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
+.person-emoji {
+  width: 88px;
+  height: 88px;
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  background: radial-gradient(circle at 30% 30%, #ffe7b8, #f3c06a);
+  box-shadow: 0 14px 24px rgba(31, 28, 25, 0.18);
+}
+
+.person-name {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.person-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.person-fields {
+  display: grid;
+  gap: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.person-field {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+}
+
+.person-field:last-child {
+  border-bottom: none;
+}
+
+.person-field-label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.person-field-value {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.person-field.empty {
+  grid-template-columns: 1fr;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .sheet-form label {
   display: grid;
   gap: 6px;
@@ -368,6 +445,10 @@ button {
   border-radius: 999px;
 }
 
+.ghost.full {
+  width: 100%;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -381,6 +462,12 @@ button:disabled {
   .node.user {
     width: 124px;
     height: 124px;
+  }
+}
+
+@media (max-width: 520px) {
+  .person-field {
+    grid-template-columns: 1fr;
   }
 }
 

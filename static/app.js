@@ -332,6 +332,7 @@ function createNode({ key, type, x, y, label, subtitle, color, emoji, title }) {
   if (type !== "user") {
     attachLongPressDrag(node, key);
   }
+  return node;
 }
 
 function renderLines() {
@@ -430,7 +431,7 @@ function renderMap() {
     const stored = getStoredPosition(`person-${person.id}`);
     const pos = stored || fallback;
     const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
-    createNode({
+    const node = createNode({
       key: `person-${person.id}`,
       type: "person",
       x: pos.x,
@@ -438,6 +439,7 @@ function renderMap() {
       emoji,
       title: person.full_name,
     });
+    attachPersonDetails(node, person);
   });
 
   grids.forEach((grid) => {
@@ -454,7 +456,7 @@ function renderMap() {
       const stored = getStoredPosition(`person-${person.id}`);
       const pos = stored || fallback;
       const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
-      createNode({
+      const node = createNode({
         key: `person-${person.id}`,
         type: "person",
         x: pos.x,
@@ -462,6 +464,7 @@ function renderMap() {
         emoji,
         title: person.full_name,
       });
+      attachPersonDetails(node, person);
     });
   });
 
@@ -475,6 +478,7 @@ function attachLongPressDrag(node, key) {
   let lastPoint = null;
   let offset = { x: 0, y: 0 };
   let pointerType = "mouse";
+  node.__wasDragging = false;
 
   const clearPress = () => {
     if (pressTimer) {
@@ -489,6 +493,9 @@ function attachLongPressDrag(node, key) {
       isDragging = false;
       node.classList.remove("is-dragging");
       updateStoredPosition(key, nodePositions.get(key));
+      setTimeout(() => {
+        node.__wasDragging = false;
+      }, 180);
     }
     startPoint = null;
     lastPoint = null;
@@ -506,6 +513,7 @@ function attachLongPressDrag(node, key) {
 
     const startDrag = () => {
       isDragging = true;
+      node.__wasDragging = true;
       node.classList.add("is-dragging");
       const canvasPoint = getCanvasPoint(lastPoint.x, lastPoint.y);
       const current = nodePositions.get(key) || canvasPoint;
@@ -548,6 +556,110 @@ function attachLongPressDrag(node, key) {
 
   node.addEventListener("pointerup", stopDragging);
   node.addEventListener("pointercancel", stopDragging);
+}
+
+function getPersonCustomFields(person) {
+  if (!person || !person.fields || !Array.isArray(person.fields.custom_fields)) {
+    return [];
+  }
+  return person.fields.custom_fields;
+}
+
+function renderPersonFields(container, fields, limit = null) {
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const list = limit ? fields.slice(0, limit) : fields;
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "person-field empty";
+    empty.textContent = "No custom fields yet.";
+    container.appendChild(empty);
+    return;
+  }
+  list.forEach((field) => {
+    const label = escapeHTML(field.label || "");
+    const value = escapeHTML(field.value || "—");
+    const row = document.createElement("div");
+    row.className = "person-field";
+    row.innerHTML = `
+      <div class="person-field-label">${label}</div>
+      <div class="person-field-value">${value}</div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function openPersonDetails(person) {
+  if (!person) {
+    return;
+  }
+  const emoji =
+    person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+  const gridTitle = person.grid_id
+    ? grids.find((grid) => grid.id === person.grid_id)?.title
+    : null;
+  const customFields = getPersonCustomFields(person);
+  const previewCount = 5;
+
+  sheetTitle.textContent = person.full_name;
+  sheetForm.onsubmit = null;
+  sheetForm.innerHTML = `
+    <div class="person-card">
+      <div class="person-hero">
+        <div class="person-emoji">${escapeHTML(emoji)}</div>
+        <div class="person-name">${escapeHTML(person.full_name)}</div>
+        <div class="person-sub">
+          ${gridTitle ? `Grid: ${escapeHTML(gridTitle)}` : "Unassigned"}
+        </div>
+      </div>
+      <div id="person-fields" class="person-fields"></div>
+      ${
+        customFields.length > previewCount
+          ? `<button type="button" class="ghost full" id="show-more">
+              Show all ${customFields.length}
+            </button>`
+          : ""
+      }
+      <div class="sheet-actions">
+        <button type="button" class="primary" id="sheet-ok">OK</button>
+      </div>
+    </div>
+  `;
+
+  const fieldsContainer = sheetForm.querySelector("#person-fields");
+  renderPersonFields(fieldsContainer, customFields, previewCount);
+
+  const showMoreBtn = sheetForm.querySelector("#show-more");
+  if (showMoreBtn) {
+    showMoreBtn.addEventListener("click", () => {
+      renderPersonFields(fieldsContainer, customFields, null);
+      showMoreBtn.remove();
+    });
+  }
+
+  const okBtn = sheetForm.querySelector("#sheet-ok");
+  if (okBtn) {
+    okBtn.onclick = closeSheet;
+  }
+
+  sheet.classList.remove("hidden");
+  sheetBackdrop.classList.remove("hidden");
+}
+
+function attachPersonDetails(node, person) {
+  if (!node) {
+    return;
+  }
+  node.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (node.__wasDragging) {
+      node.__wasDragging = false;
+      return;
+    }
+    openPersonDetails(person);
+  });
 }
 
 async function fetchJson(url, options = {}) {
