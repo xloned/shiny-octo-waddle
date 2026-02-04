@@ -329,6 +329,19 @@ button {
   background: #fff;
 }
 
+.person-section {
+  display: grid;
+  gap: 8px;
+}
+
+.person-section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .grid-card {
   display: grid;
   gap: 14px;

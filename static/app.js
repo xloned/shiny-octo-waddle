@@ -54,6 +54,19 @@ function escapeHTML(value) {
     .replace(/'/g, "&#039;");
 }
 
+function normalizeUsername(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+}
+
+function formatUsername(value) {
+  const normalized = normalizeUsername(value);
+  return normalized || "—";
+}
+
 function getTgId() {
   if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
     return tg.initDataUnsafe.user.id;
@@ -244,11 +257,12 @@ function setupCustomFields(container, countEl, addBtn, initialFields = []) {
   return () => collectCustomFields(container);
 }
 
-function setupPalette(container, input) {
+function setupPalette(container, input, initialColor = null) {
   if (!container || !input) {
     return;
   }
   container.innerHTML = "";
+  let matched = false;
   const setSelected = (button, color) => {
     container
       .querySelectorAll(".palette-swatch")
@@ -265,10 +279,16 @@ function setupPalette(container, input) {
     button.setAttribute("aria-label", `Select ${color}`);
     button.addEventListener("click", () => setSelected(button, color));
     container.appendChild(button);
-    if (index === 0) {
+    if (initialColor && color === initialColor) {
+      setSelected(button, color);
+      matched = true;
+    } else if (!initialColor && index === 0) {
       setSelected(button, color);
     }
   });
+  if (initialColor && !matched) {
+    input.value = initialColor;
+  }
 }
 
 function drawLine(from, to, className) {
@@ -642,14 +662,26 @@ function openPersonDetails(person) {
   if (!person) {
     return;
   }
-    const emoji =
-      person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
-    const profileBg =
-      person.fields && person.fields.profile_bg ? person.fields.profile_bg : "#f3c06a";
+  const emoji =
+    person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+  const profileBg =
+    person.fields && person.fields.profile_bg ? person.fields.profile_bg : "#f3c06a";
   const gridTitle = person.grid_id
     ? grids.find((grid) => grid.id === person.grid_id)?.title
     : null;
   const customFields = getPersonCustomFields(person);
+  const requiredFields = [
+    {
+      label: "Telegram",
+      value: formatUsername(person.fields ? person.fields.telegram_username : ""),
+    },
+    {
+      label: "Date of birth",
+      value: person.fields && person.fields.date_of_birth
+        ? person.fields.date_of_birth
+        : "—",
+    },
+  ];
   const previewCount = 5;
 
   sheetTitle.textContent = person.full_name;
@@ -663,7 +695,14 @@ function openPersonDetails(person) {
           ${gridTitle ? `Grid: ${escapeHTML(gridTitle)}` : "Unassigned"}
         </div>
       </div>
-      <div id="person-fields" class="person-fields"></div>
+      <div class="person-section">
+        <div class="person-section-title">Pinned</div>
+        <div id="person-required" class="person-fields"></div>
+      </div>
+      <div class="person-section">
+        <div class="person-section-title">Fields</div>
+        <div id="person-custom" class="person-fields"></div>
+      </div>
       ${
         customFields.length > previewCount
           ? `<button type="button" class="ghost full" id="show-more">
@@ -673,18 +712,21 @@ function openPersonDetails(person) {
       }
       <div class="sheet-actions">
         <button type="button" class="danger" id="delete-person">Delete</button>
+        <button type="button" class="ghost" id="edit-person">Edit</button>
         <button type="button" class="primary" id="sheet-ok">OK</button>
       </div>
     </div>
   `;
 
-  const fieldsContainer = sheetForm.querySelector("#person-fields");
-  renderPersonFields(fieldsContainer, customFields, previewCount);
+  const requiredContainer = sheetForm.querySelector("#person-required");
+  const customContainer = sheetForm.querySelector("#person-custom");
+  renderPersonFields(requiredContainer, requiredFields, null);
+  renderPersonFields(customContainer, customFields, previewCount);
 
   const showMoreBtn = sheetForm.querySelector("#show-more");
   if (showMoreBtn) {
     showMoreBtn.addEventListener("click", () => {
-      renderPersonFields(fieldsContainer, customFields, null);
+      renderPersonFields(customContainer, customFields, null);
       showMoreBtn.remove();
     });
   }
@@ -712,6 +754,11 @@ function openPersonDetails(person) {
     };
   }
 
+  const editBtn = sheetForm.querySelector("#edit-person");
+  if (editBtn) {
+    editBtn.onclick = () => openPersonEditor(person);
+  }
+
   sheet.classList.remove("hidden");
   sheetBackdrop.classList.remove("hidden");
 }
@@ -728,6 +775,152 @@ function attachPersonDetails(node, person) {
     }
     openPersonDetails(person);
   });
+}
+
+function openPersonEditor(person) {
+  if (!person) {
+    return;
+  }
+  const options = [
+    `<option value="">Unassigned</option>`,
+    ...grids.map((grid) => {
+      const selected = person.grid_id === grid.id ? "selected" : "";
+      return `<option value="${grid.id}" ${selected}>${escapeHTML(grid.title)}</option>`;
+    }),
+  ].join("");
+
+  sheetTitle.textContent = "Edit person";
+  sheetForm.innerHTML = `
+    <label>
+      Full name
+      <input name="full_name" required placeholder="New friend" />
+    </label>
+    <label>
+      Telegram username
+      <input name="telegram_username" required placeholder="@username" />
+    </label>
+    <label>
+      Date of birth
+      <input name="date_of_birth" type="date" required />
+    </label>
+    <label>
+      Emoji
+      <input name="emoji" placeholder="🙂" maxlength="2" />
+    </label>
+    <div class="palette">
+      <div class="palette-header">
+        <span>Profile background</span>
+        <span class="palette-note">Pick a color</span>
+      </div>
+      <div class="palette-options" id="palette-options"></div>
+      <input type="hidden" name="profile_bg" id="profile-bg" />
+    </div>
+    <label>
+      Grid
+      <select name="grid_id">${options}</select>
+    </label>
+    <div class="field-group">
+      <div class="field-header">
+        <div class="field-title">
+          <span>Custom fields</span>
+          <span id="custom-fields-count" class="field-count">0/${MAX_CUSTOM_FIELDS}</span>
+        </div>
+        <button type="button" class="ghost compact" id="add-field">Add field</button>
+      </div>
+      <div id="custom-fields" class="field-list"></div>
+      <p class="field-hint">
+        Up to ${MAX_CUSTOM_FIELDS} fields like favorite color, job, or hobby.
+      </p>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="ghost" id="sheet-cancel">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  `;
+
+  const fullNameInput = sheetForm.querySelector('input[name="full_name"]');
+  if (fullNameInput) {
+    fullNameInput.value = person.full_name || "";
+  }
+  const usernameInput = sheetForm.querySelector('input[name="telegram_username"]');
+  if (usernameInput) {
+    usernameInput.value = person.fields?.telegram_username || "";
+  }
+  const dobInput = sheetForm.querySelector('input[name="date_of_birth"]');
+  if (dobInput) {
+    dobInput.value = person.fields?.date_of_birth || "";
+  }
+  const emojiInput = sheetForm.querySelector('input[name="emoji"]');
+  if (emojiInput) {
+    emojiInput.value = person.fields?.emoji || "";
+  }
+
+  const fieldsContainer = sheetForm.querySelector("#custom-fields");
+  const fieldsCount = sheetForm.querySelector("#custom-fields-count");
+  const addFieldBtn = sheetForm.querySelector("#add-field");
+  const initialFields = getPersonCustomFields(person);
+  const getCustomFields = setupCustomFields(
+    fieldsContainer,
+    fieldsCount,
+    addFieldBtn,
+    initialFields
+  );
+  const paletteContainer = sheetForm.querySelector("#palette-options");
+  const profileInput = sheetForm.querySelector("#profile-bg");
+  const profileBg = person.fields?.profile_bg || null;
+  setupPalette(paletteContainer, profileInput, profileBg);
+
+  sheetForm.onsubmit = async (event) => {
+    event.preventDefault();
+    const formData = new FormData(sheetForm);
+    const emojiValue = String(formData.get("emoji") || "").trim();
+    const gridValue = formData.get("grid_id");
+    const customFields = getCustomFields();
+    const profileBgValue = String(formData.get("profile_bg") || "").trim();
+    const telegramUsername = normalizeUsername(formData.get("telegram_username"));
+    const dateOfBirth = String(formData.get("date_of_birth") || "").trim();
+    if (!telegramUsername || !dateOfBirth) {
+      alert("Telegram username and date of birth are required.");
+      return;
+    }
+
+    const fieldsPayload = {
+      emoji: emojiValue || "🙂",
+      telegram_username: telegramUsername,
+      date_of_birth: dateOfBirth,
+    };
+    if (customFields.length) {
+      fieldsPayload.custom_fields = customFields;
+    }
+    if (profileBgValue) {
+      fieldsPayload.profile_bg = profileBgValue;
+    }
+
+    const payload = {
+      full_name: formData.get("full_name"),
+      fields: fieldsPayload,
+      grid_id: gridValue ? Number(gridValue) : null,
+    };
+
+    try {
+      await fetchJson(`${API_BASE}/people/${person.id}?tg_id=${tgId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      closeSheet();
+      await refreshData();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const cancelBtn = sheetForm.querySelector("#sheet-cancel");
+  if (cancelBtn) {
+    cancelBtn.onclick = closeSheet;
+  }
+
+  sheet.classList.remove("hidden");
+  sheetBackdrop.classList.remove("hidden");
 }
 
 function openGridDetails(grid) {
@@ -921,6 +1114,14 @@ function openSheet(type) {
         <input name="full_name" required placeholder="New friend" />
       </label>
       <label>
+        Telegram username
+        <input name="telegram_username" required placeholder="@username" />
+      </label>
+      <label>
+        Date of birth
+        <input name="date_of_birth" type="date" required />
+      </label>
+      <label>
         Emoji
         <input name="emoji" placeholder="🙂" maxlength="2" />
       </label>
@@ -946,7 +1147,7 @@ function openSheet(type) {
         </div>
         <div id="custom-fields" class="field-list"></div>
         <p class="field-hint">
-          Up to ${MAX_CUSTOM_FIELDS} fields like favorite color, job, or date of birth.
+        Up to ${MAX_CUSTOM_FIELDS} fields like favorite color, job, or hobby.
         </p>
       </div>
       <div class="sheet-actions">
@@ -961,7 +1162,7 @@ function openSheet(type) {
     getCustomFields = setupCustomFields(fieldsContainer, fieldsCount, addFieldBtn);
     const paletteContainer = sheetForm.querySelector("#palette-options");
     const profileInput = sheetForm.querySelector("#profile-bg");
-    setupPalette(paletteContainer, profileInput);
+    setupPalette(paletteContainer, profileInput, null);
   }
 
   sheetForm.onsubmit = async (event) => {
@@ -985,8 +1186,16 @@ function openSheet(type) {
         const gridValue = formData.get("grid_id");
         const customFields = getCustomFields();
         const profileBg = String(formData.get("profile_bg") || "").trim();
+        const telegramUsername = normalizeUsername(formData.get("telegram_username"));
+        const dateOfBirth = String(formData.get("date_of_birth") || "").trim();
+        if (!telegramUsername || !dateOfBirth) {
+          alert("Telegram username and date of birth are required.");
+          return;
+        }
         const fieldsPayload = {
           emoji: emojiInput || "🙂",
+          telegram_username: telegramUsername,
+          date_of_birth: dateOfBirth,
         };
         if (customFields.length) {
           fieldsPayload.custom_fields = customFields;

@@ -53,6 +53,7 @@ WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
 
 MAX_CUSTOM_FIELDS = 20
 CUSTOM_FIELDS_KEY = "custom_fields"
+REQUIRED_PERSON_FIELDS = ("telegram_username", "date_of_birth")
 
 
 class Base(DeclarativeBase):
@@ -148,14 +149,30 @@ async def get_or_create_user(session: AsyncSession, tg_id: int) -> TgUser:
     return user
 
 
-def normalize_person_fields(fields: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_person_fields(fields: Dict[str, Any], require_required: bool) -> Dict[str, Any]:
     if not fields:
+        if require_required:
+            raise HTTPException(status_code=400, detail="Required fields are missing")
         return {}
     if not isinstance(fields, dict):
         raise HTTPException(status_code=400, detail="Invalid fields payload")
-    custom_fields = fields.get(CUSTOM_FIELDS_KEY)
+    updated = dict(fields)
+
+    if require_required:
+        for key in REQUIRED_PERSON_FIELDS:
+            value = updated.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise HTTPException(
+                    status_code=400, detail=f"{key} is required"
+                )
+            cleaned = value.strip()
+            if key == "telegram_username" and cleaned and not cleaned.startswith("@"):
+                cleaned = f"@{cleaned}"
+            updated[key] = cleaned
+
+    custom_fields = updated.get(CUSTOM_FIELDS_KEY)
     if custom_fields is None:
-        return fields
+        return updated
     if not isinstance(custom_fields, list):
         raise HTTPException(status_code=400, detail="custom_fields must be a list")
 
@@ -172,7 +189,6 @@ def normalize_person_fields(fields: Dict[str, Any]) -> Dict[str, Any]:
     if len(normalized) > MAX_CUSTOM_FIELDS:
         raise HTTPException(status_code=400, detail="Too many custom fields")
 
-    updated = dict(fields)
     updated[CUSTOM_FIELDS_KEY] = normalized
     return updated
 
@@ -474,7 +490,7 @@ async def create_person(
         if not grid_result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="Grid not found")
 
-    fields = normalize_person_fields(payload.fields or {})
+    fields = normalize_person_fields(payload.fields or {}, True)
     person = Person(
         user_id=user.id,
         grid_id=grid_id,
@@ -519,7 +535,9 @@ async def update_person(
     if payload.full_name is not None:
         person.full_name = payload.full_name.strip()
     if payload.fields is not None:
-        person.fields = normalize_person_fields(payload.fields or {})
+        merged_fields = dict(person.fields or {})
+        merged_fields.update(payload.fields or {})
+        person.fields = normalize_person_fields(merged_fields, True)
 
     await session.commit()
     return PersonOut(
