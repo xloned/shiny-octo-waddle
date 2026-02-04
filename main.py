@@ -576,16 +576,31 @@ router = Router()
 
 @router.message(CommandStart())
 async def start(message: Message) -> None:
+    language = None
+    if message.from_user:
+        language = message.from_user.language_code
+    is_ru = bool(language and language.lower().startswith("ru"))
     if not BOT_TOKEN:
-        await message.answer("Bot is not configured. Set BOT_TOKEN in the environment.")
+        await message.answer(
+            "Бот не настроен. Укажите BOT_TOKEN в окружении."
+            if is_ru
+            else "Bot is not configured. Set BOT_TOKEN in the environment."
+        )
         return
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Open Friends MiniApp", web_app=WebAppInfo(url=WEBAPP_URL))]
+            [
+                InlineKeyboardButton(
+                    text="Открыть Friends MiniApp" if is_ru else "Open Friends MiniApp",
+                    web_app=WebAppInfo(url=WEBAPP_URL),
+                )
+            ]
         ]
     )
     await message.answer(
-        "Welcome! Tap the button below to open your Friends MiniApp.",
+        "Добро пожаловать! Нажмите кнопку ниже, чтобы открыть Friends MiniApp."
+        if is_ru
+        else "Welcome! Tap the button below to open your Friends MiniApp.",
         reply_markup=keyboard,
         parse_mode=ParseMode.HTML,
     )

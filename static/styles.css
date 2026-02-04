@@ -101,21 +101,49 @@ body {
 }
 
 .node.user {
-  width: 140px;
-  height: 140px;
+  width: 156px;
+  height: 156px;
   color: #fff;
   background: radial-gradient(circle at 30% 30%, #5e8cff, #2b5ec9);
-  letter-spacing: 1px;
+  gap: 8px;
+  padding: 12px;
+  letter-spacing: 0.2px;
+}
+
+.node.user .user-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 12px 20px rgba(31, 28, 25, 0.2);
+}
+
+.node.user .user-avatar.has-image {
+  color: transparent;
+}
+
+.node.user .user-meta {
+  display: grid;
+  gap: 2px;
 }
 
 .node.user .node-title {
-  font-size: 24px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 .node.user .node-sub {
   font-size: 12px;
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
 .node.grid {
@@ -561,8 +589,14 @@ button:disabled {
 
 @media (max-width: 720px) {
   .node.user {
-    width: 124px;
-    height: 124px;
+    width: 132px;
+    height: 132px;
+  }
+
+  .node.user .user-avatar {
+    width: 62px;
+    height: 62px;
+    border-radius: 18px;
   }
 }
 

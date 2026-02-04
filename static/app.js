@@ -11,6 +11,187 @@ const PROFILE_PALETTE = [
   "#ef476f",
 ];
 
+const I18N = {
+  en: {
+    app_title: "Friends MiniApp",
+    dev_banner: "Dev mode: Telegram user id not found. Enter it to continue.",
+    dev_placeholder: "Telegram user id",
+    continue: "Continue",
+    add: "Add",
+    add_grid: "Add grid",
+    add_person: "Add person",
+    field_name: "Field name",
+    field_value: "Value",
+    remove_field: "Remove field",
+    you: "You",
+    not_connected: "Not connected",
+    id_suffix: "#{id}",
+    telegram: "Telegram",
+    date_of_birth: "Date of birth",
+    pinned: "Pinned",
+    fields: "Fields",
+    show_all: "Show all {count}",
+    delete: "Delete",
+    edit: "Edit",
+    ok: "OK",
+    edit_person: "Edit person",
+    full_name: "Full name",
+    telegram_username: "Telegram username",
+    emoji: "Emoji",
+    profile_background: "Profile background",
+    pick_color: "Pick a color",
+    grid: "Grid",
+    grid_prefix: "Grid: {title}",
+    unassigned: "Unassigned",
+    custom_fields: "Custom fields",
+    add_field: "Add field",
+    custom_fields_hint:
+      "Up to {max} fields like favorite color, job, or hobby.",
+    cancel: "Cancel",
+    save: "Save",
+    new_grid: "New grid",
+    new_person: "New person",
+    title: "Title",
+    description: "Description",
+    grid_title_placeholder: "Gym",
+    grid_description_placeholder: "Friends from the gym",
+    person_name_placeholder: "New friend",
+    color: "Color",
+    create_grid: "Create grid",
+    add_person_action: "Add person",
+    telegram_required_error: "Telegram username and date of birth are required.",
+    no_description: "No description",
+    people_label: "People",
+    people_count: "{count} people",
+    no_custom_fields: "No custom fields yet.",
+    delete_person_confirm: "Delete {name}?",
+    delete_grid_confirm: 'Delete grid "{title}"?',
+    enter_valid_tg_id: "Enter a valid Telegram user id.",
+    request_failed: "Request failed",
+  },
+  ru: {
+    app_title: "Friends MiniApp",
+    dev_banner:
+      "Режим разработки: ID пользователя Telegram не найден. Введите его, чтобы продолжить.",
+    dev_placeholder: "ID пользователя Telegram",
+    continue: "Продолжить",
+    add: "Добавить",
+    add_grid: "Добавить группу",
+    add_person: "Добавить человека",
+    field_name: "Название поля",
+    field_value: "Значение",
+    remove_field: "Удалить поле",
+    you: "Вы",
+    not_connected: "Не подключено",
+    id_suffix: "#{id}",
+    telegram: "Telegram",
+    date_of_birth: "Дата рождения",
+    pinned: "Основное",
+    fields: "Поля",
+    show_all: "Показать все {count}",
+    delete: "Удалить",
+    edit: "Редактировать",
+    ok: "ОК",
+    edit_person: "Редактировать человека",
+    full_name: "Имя и фамилия",
+    telegram_username: "Ник в Telegram",
+    emoji: "Эмодзи",
+    profile_background: "Фон профиля",
+    pick_color: "Выберите цвет",
+    grid: "Группа",
+    grid_prefix: "Группа: {title}",
+    unassigned: "Без группы",
+    custom_fields: "Дополнительные поля",
+    add_field: "Добавить поле",
+    custom_fields_hint:
+      "До {max} полей, например любимый цвет, работа или хобби.",
+    cancel: "Отмена",
+    save: "Сохранить",
+    new_grid: "Новая группа",
+    new_person: "Новый человек",
+    title: "Название",
+    description: "Описание",
+    grid_title_placeholder: "Спортзал",
+    grid_description_placeholder: "Друзья из спортзала",
+    person_name_placeholder: "Новый друг",
+    color: "Цвет",
+    create_grid: "Создать группу",
+    add_person_action: "Добавить человека",
+    telegram_required_error: "Ник в Telegram и дата рождения обязательны.",
+    no_description: "Без описания",
+    people_label: "Люди",
+    people_count: "{count} человек",
+    no_custom_fields: "Пока нет дополнительных полей.",
+    delete_person_confirm: "Удалить {name}?",
+    delete_grid_confirm: 'Удалить группу "{title}"?',
+    enter_valid_tg_id: "Введите корректный ID пользователя Telegram.",
+    request_failed: "Ошибка запроса",
+  },
+};
+
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+function resolveLocale() {
+  const params = new URLSearchParams(window.location.search);
+  const paramLang = params.get("lang");
+  const tgLang =
+    tg && tg.initDataUnsafe && tg.initDataUnsafe.user
+      ? tg.initDataUnsafe.user.language_code
+      : null;
+  const candidates = [
+    paramLang,
+    tgLang,
+    navigator.language,
+    Array.isArray(navigator.languages) ? navigator.languages[0] : null,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    const lowered = String(candidate).toLowerCase();
+    if (lowered.startsWith("ru")) {
+      return "ru";
+    }
+    if (lowered.startsWith("en")) {
+      return "en";
+    }
+  }
+  return "en";
+}
+
+const locale = resolveLocale();
+const translations = I18N[locale] || I18N.en;
+document.documentElement.lang = locale;
+
+function t(key, vars = null) {
+  const template =
+    translations[key] || I18N.en[key] || String(key);
+  if (!vars) {
+    return template;
+  }
+  return template.replace(/\{(\w+)\}/g, (match, name) => {
+    if (Object.prototype.hasOwnProperty.call(vars, name)) {
+      return String(vars[name]);
+    }
+    return match;
+  });
+}
+
+function safeImageUrl(value) {
+  if (!value) {
+    return "";
+  }
+  try {
+    const parsed = new URL(String(value));
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch (error) {
+    return "";
+  }
+  return "";
+}
+
 const map = document.getElementById("map");
 const mapViewport = document.getElementById("map-viewport");
 const mapLines = document.getElementById("map-lines");
@@ -42,8 +223,6 @@ let positions = {};
 let nodePositions = new Map();
 let nodeElements = new Map();
 
-const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-
 function escapeHTML(value) {
   const text = String(value ?? "");
   return text
@@ -52,6 +231,31 @@ function escapeHTML(value) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function applyStaticTranslations() {
+  document.title = t("app_title");
+  if (devBanner) {
+    const bannerText = devBanner.querySelector("p");
+    if (bannerText) {
+      bannerText.textContent = t("dev_banner");
+    }
+  }
+  if (devInput) {
+    devInput.placeholder = t("dev_placeholder");
+  }
+  if (devContinue) {
+    devContinue.textContent = t("continue");
+  }
+  if (fab) {
+    fab.setAttribute("aria-label", t("add"));
+  }
+  if (addGridBtn) {
+    addGridBtn.textContent = t("add_grid");
+  }
+  if (addPersonBtn) {
+    addPersonBtn.textContent = t("add_person");
+  }
 }
 
 function normalizeUsername(value) {
@@ -77,6 +281,28 @@ function getTgId() {
     return Number(value);
   }
   return null;
+}
+
+function getUserProfile() {
+  const user = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
+  const nameParts = [];
+  if (user && user.first_name) {
+    nameParts.push(user.first_name);
+  }
+  if (user && user.last_name) {
+    nameParts.push(user.last_name);
+  }
+  const fullName = nameParts.join(" ").trim();
+  const username = user && user.username ? `@${user.username}` : "";
+  const avatarUrl = safeImageUrl(user && user.photo_url ? user.photo_url : "");
+  const idSource = user && user.id ? String(user.id) : tgId ? String(tgId) : "";
+  const idSuffix = idSource ? idSource.slice(-4) : "";
+  const subtitle = username || (idSuffix ? t("id_suffix", { id: idSuffix }) : t("not_connected"));
+  return {
+    name: fullName || username || t("you"),
+    subtitle,
+    avatarUrl,
+  };
 }
 
 function parseNodeKey(key) {
@@ -178,9 +404,9 @@ function buildCustomFieldRow(field = {}) {
   const row = document.createElement("div");
   row.className = "field-row";
   row.innerHTML = `
-    <input class="field-label" type="text" placeholder="Field name" maxlength="40" />
-    <input class="field-value" type="text" placeholder="Value" maxlength="80" />
-    <button type="button" class="icon-button field-remove" aria-label="Remove field">x</button>
+    <input class="field-label" type="text" placeholder="${t("field_name")}" maxlength="40" />
+    <input class="field-value" type="text" placeholder="${t("field_value")}" maxlength="80" />
+    <button type="button" class="icon-button field-remove" aria-label="${t("remove_field")}">x</button>
   `;
   const labelInput = row.querySelector(".field-label");
   const valueInput = row.querySelector(".field-value");
@@ -353,7 +579,18 @@ function setNodePosition(key, pos) {
   }
 }
 
-function createNode({ key, type, x, y, label, subtitle, color, emoji, title }) {
+function createNode({
+  key,
+  type,
+  x,
+  y,
+  label,
+  subtitle,
+  color,
+  emoji,
+  title,
+  avatarUrl,
+}) {
   const node = document.createElement("div");
   node.className = `node ${type}`;
   const initial = clampNodePosition(key, { x, y });
@@ -368,6 +605,33 @@ function createNode({ key, type, x, y, label, subtitle, color, emoji, title }) {
 
   if (type === "person") {
     node.textContent = emoji || "🙂";
+  } else if (type === "user") {
+    const avatar = document.createElement("div");
+    avatar.className = "user-avatar";
+    if (avatarUrl) {
+      avatar.style.backgroundImage = `url("${avatarUrl}")`;
+      avatar.classList.add("has-image");
+    } else {
+      const initial = label ? label.trim().charAt(0).toUpperCase() : "🙂";
+      avatar.textContent = initial || "🙂";
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "user-meta";
+    const titleEl = document.createElement("div");
+    titleEl.className = "node-title";
+    titleEl.textContent = label || t("you");
+    meta.appendChild(titleEl);
+
+    if (subtitle) {
+      const subEl = document.createElement("div");
+      subEl.className = "node-sub";
+      subEl.textContent = subtitle;
+      meta.appendChild(subEl);
+    }
+
+    node.appendChild(avatar);
+    node.appendChild(meta);
   } else {
     const titleEl = document.createElement("div");
     titleEl.className = "node-title";
@@ -436,14 +700,16 @@ function renderMap() {
   mapLines.innerHTML = "";
 
   const center = { x: canvas.width / 2, y: canvas.height / 2 };
+  const userProfile = getUserProfile();
   createNode({
     key: "user",
     type: "user",
     x: center.x,
     y: center.y,
-    label: "USER",
-    subtitle: tgId ? `#${String(tgId).slice(-4)}` : "",
-    title: tgId ? `User ${tgId}` : "You",
+    label: userProfile.name,
+    subtitle: userProfile.subtitle,
+    avatarUrl: userProfile.avatarUrl,
+    title: userProfile.name,
   });
 
   const gridCount = grids.length;
@@ -461,7 +727,7 @@ function renderMap() {
       x: pos.x,
       y: pos.y,
       label: shortLabel(grid.title),
-      subtitle: `${grid.people_count} people`,
+      subtitle: t("people_count", { count: grid.people_count }),
       color: grid.color || "#f07a2a",
       title: grid.title,
     });
@@ -641,7 +907,7 @@ function renderPersonFields(container, fields, limit = null) {
   if (!list.length) {
     const empty = document.createElement("div");
     empty.className = "person-field empty";
-    empty.textContent = "No custom fields yet.";
+    empty.textContent = t("no_custom_fields");
     container.appendChild(empty);
     return;
   }
@@ -672,11 +938,11 @@ function openPersonDetails(person) {
   const customFields = getPersonCustomFields(person);
   const requiredFields = [
     {
-      label: "Telegram",
+      label: t("telegram"),
       value: formatUsername(person.fields ? person.fields.telegram_username : ""),
     },
     {
-      label: "Date of birth",
+      label: t("date_of_birth"),
       value: person.fields && person.fields.date_of_birth
         ? person.fields.date_of_birth
         : "—",
@@ -692,28 +958,32 @@ function openPersonDetails(person) {
         <div class="person-emoji">${escapeHTML(emoji)}</div>
         <div class="person-name">${escapeHTML(person.full_name)}</div>
         <div class="person-sub">
-          ${gridTitle ? `Grid: ${escapeHTML(gridTitle)}` : "Unassigned"}
+          ${
+            gridTitle
+              ? t("grid_prefix", { title: escapeHTML(gridTitle) })
+              : t("unassigned")
+          }
         </div>
       </div>
       <div class="person-section">
-        <div class="person-section-title">Pinned</div>
+        <div class="person-section-title">${t("pinned")}</div>
         <div id="person-required" class="person-fields"></div>
       </div>
       <div class="person-section">
-        <div class="person-section-title">Fields</div>
+        <div class="person-section-title">${t("fields")}</div>
         <div id="person-custom" class="person-fields"></div>
       </div>
       ${
         customFields.length > previewCount
           ? `<button type="button" class="ghost full" id="show-more">
-              Show all ${customFields.length}
+              ${t("show_all", { count: customFields.length })}
             </button>`
           : ""
       }
       <div class="sheet-actions">
-        <button type="button" class="danger" id="delete-person">Delete</button>
-        <button type="button" class="ghost" id="edit-person">Edit</button>
-        <button type="button" class="primary" id="sheet-ok">OK</button>
+        <button type="button" class="danger" id="delete-person">${t("delete")}</button>
+        <button type="button" class="ghost" id="edit-person">${t("edit")}</button>
+        <button type="button" class="primary" id="sheet-ok">${t("ok")}</button>
       </div>
     </div>
   `;
@@ -739,7 +1009,7 @@ function openPersonDetails(person) {
   const deleteBtn = sheetForm.querySelector("#delete-person");
   if (deleteBtn) {
     deleteBtn.onclick = async () => {
-      if (!confirm(`Delete ${person.full_name}?`)) {
+      if (!confirm(t("delete_person_confirm", { name: person.full_name }))) {
         return;
       }
       try {
@@ -782,59 +1052,59 @@ function openPersonEditor(person) {
     return;
   }
   const options = [
-    `<option value="">Unassigned</option>`,
+    `<option value="">${t("unassigned")}</option>`,
     ...grids.map((grid) => {
       const selected = person.grid_id === grid.id ? "selected" : "";
       return `<option value="${grid.id}" ${selected}>${escapeHTML(grid.title)}</option>`;
     }),
   ].join("");
 
-  sheetTitle.textContent = "Edit person";
+  sheetTitle.textContent = t("edit_person");
   sheetForm.innerHTML = `
     <label>
-      Full name
-      <input name="full_name" required placeholder="New friend" />
+      ${t("full_name")}
+      <input name="full_name" required placeholder="${t("person_name_placeholder")}" />
     </label>
     <label>
-      Telegram username
+      ${t("telegram_username")}
       <input name="telegram_username" required placeholder="@username" />
     </label>
     <label>
-      Date of birth
+      ${t("date_of_birth")}
       <input name="date_of_birth" type="date" required />
     </label>
     <label>
-      Emoji
+      ${t("emoji")}
       <input name="emoji" placeholder="🙂" maxlength="2" />
     </label>
     <div class="palette">
       <div class="palette-header">
-        <span>Profile background</span>
-        <span class="palette-note">Pick a color</span>
+        <span>${t("profile_background")}</span>
+        <span class="palette-note">${t("pick_color")}</span>
       </div>
       <div class="palette-options" id="palette-options"></div>
       <input type="hidden" name="profile_bg" id="profile-bg" />
     </div>
     <label>
-      Grid
+      ${t("grid")}
       <select name="grid_id">${options}</select>
     </label>
     <div class="field-group">
       <div class="field-header">
         <div class="field-title">
-          <span>Custom fields</span>
+          <span>${t("custom_fields")}</span>
           <span id="custom-fields-count" class="field-count">0/${MAX_CUSTOM_FIELDS}</span>
         </div>
-        <button type="button" class="ghost compact" id="add-field">Add field</button>
+        <button type="button" class="ghost compact" id="add-field">${t("add_field")}</button>
       </div>
       <div id="custom-fields" class="field-list"></div>
       <p class="field-hint">
-        Up to ${MAX_CUSTOM_FIELDS} fields like favorite color, job, or hobby.
+        ${t("custom_fields_hint", { max: MAX_CUSTOM_FIELDS })}
       </p>
     </div>
     <div class="sheet-actions">
-      <button type="button" class="ghost" id="sheet-cancel">Cancel</button>
-      <button type="submit" class="primary">Save</button>
+      <button type="button" class="ghost" id="sheet-cancel">${t("cancel")}</button>
+      <button type="submit" class="primary">${t("save")}</button>
     </div>
   `;
 
@@ -880,7 +1150,7 @@ function openPersonEditor(person) {
     const telegramUsername = normalizeUsername(formData.get("telegram_username"));
     const dateOfBirth = String(formData.get("date_of_birth") || "").trim();
     if (!telegramUsername || !dateOfBirth) {
-      alert("Telegram username and date of birth are required.");
+      alert(t("telegram_required_error"));
       return;
     }
 
@@ -933,17 +1203,17 @@ function openGridDetails(grid) {
     <div class="grid-card">
       <div class="grid-hero" style="background: ${escapeHTML(grid.color || "#f07a2a")};">
         <div class="grid-title">${escapeHTML(grid.title)}</div>
-        <div class="grid-sub">${escapeHTML(grid.description || "No description")}</div>
+        <div class="grid-sub">${escapeHTML(grid.description || t("no_description"))}</div>
       </div>
       <div class="grid-meta">
         <div>
-          <span class="grid-meta-label">People</span>
+          <span class="grid-meta-label">${t("people_label")}</span>
           <span class="grid-meta-value">${grid.people_count}</span>
         </div>
       </div>
       <div class="sheet-actions">
-        <button type="button" class="danger" id="delete-grid">Delete</button>
-        <button type="button" class="primary" id="sheet-ok">OK</button>
+        <button type="button" class="danger" id="delete-grid">${t("delete")}</button>
+        <button type="button" class="primary" id="sheet-ok">${t("ok")}</button>
       </div>
     </div>
   `;
@@ -956,7 +1226,7 @@ function openGridDetails(grid) {
   const deleteBtn = sheetForm.querySelector("#delete-grid");
   if (deleteBtn) {
     deleteBtn.onclick = async () => {
-      if (!confirm(`Delete grid "${grid.title}"?`)) {
+      if (!confirm(t("delete_grid_confirm", { title: grid.title }))) {
         return;
       }
       try {
@@ -996,7 +1266,7 @@ async function fetchJson(url, options = {}) {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || "Request failed");
+    throw new Error(text || t("request_failed"));
   }
   if (response.status === 204) {
     return null;
@@ -1079,30 +1349,30 @@ function closeSheet() {
 }
 
 function openSheet(type) {
-  sheetTitle.textContent = type === "grid" ? "New grid" : "New person";
+  sheetTitle.textContent = type === "grid" ? t("new_grid") : t("new_person");
   let getCustomFields = () => [];
   if (type === "grid") {
     sheetForm.innerHTML = `
       <label>
-        Title
-        <input name="title" required placeholder="Gym" />
+        ${t("title")}
+        <input name="title" required placeholder="${t("grid_title_placeholder")}" />
       </label>
       <label>
-        Description
-        <input name="description" placeholder="Friends from the gym" />
+        ${t("description")}
+        <input name="description" placeholder="${t("grid_description_placeholder")}" />
       </label>
       <label>
-        Color
+        ${t("color")}
         <input name="color" type="color" value="#f07a2a" />
       </label>
       <div class="sheet-actions">
-        <button type="button" class="ghost" id="sheet-cancel">Cancel</button>
-        <button type="submit" class="primary">Create grid</button>
+        <button type="button" class="ghost" id="sheet-cancel">${t("cancel")}</button>
+        <button type="submit" class="primary">${t("create_grid")}</button>
       </div>
     `;
   } else {
     const options = [
-      `<option value="">Unassigned</option>`,
+      `<option value="">${t("unassigned")}</option>`,
       ...grids.map(
         (grid) => `<option value="${grid.id}">${escapeHTML(grid.title)}</option>`
       ),
@@ -1110,49 +1380,49 @@ function openSheet(type) {
 
     sheetForm.innerHTML = `
       <label>
-        Full name
-        <input name="full_name" required placeholder="New friend" />
+        ${t("full_name")}
+        <input name="full_name" required placeholder="${t("person_name_placeholder")}" />
       </label>
       <label>
-        Telegram username
+        ${t("telegram_username")}
         <input name="telegram_username" required placeholder="@username" />
       </label>
       <label>
-        Date of birth
+        ${t("date_of_birth")}
         <input name="date_of_birth" type="date" required />
       </label>
       <label>
-        Emoji
+        ${t("emoji")}
         <input name="emoji" placeholder="🙂" maxlength="2" />
       </label>
       <div class="palette">
         <div class="palette-header">
-          <span>Profile background</span>
-          <span class="palette-note">Pick a color</span>
+          <span>${t("profile_background")}</span>
+          <span class="palette-note">${t("pick_color")}</span>
         </div>
         <div class="palette-options" id="palette-options"></div>
         <input type="hidden" name="profile_bg" id="profile-bg" />
       </div>
       <label>
-        Grid
+        ${t("grid")}
         <select name="grid_id">${options}</select>
       </label>
       <div class="field-group">
         <div class="field-header">
           <div class="field-title">
-            <span>Custom fields</span>
+            <span>${t("custom_fields")}</span>
             <span id="custom-fields-count" class="field-count">0/${MAX_CUSTOM_FIELDS}</span>
           </div>
-          <button type="button" class="ghost compact" id="add-field">Add field</button>
+          <button type="button" class="ghost compact" id="add-field">${t("add_field")}</button>
         </div>
         <div id="custom-fields" class="field-list"></div>
         <p class="field-hint">
-        Up to ${MAX_CUSTOM_FIELDS} fields like favorite color, job, or hobby.
+        ${t("custom_fields_hint", { max: MAX_CUSTOM_FIELDS })}
         </p>
       </div>
       <div class="sheet-actions">
-        <button type="button" class="ghost" id="sheet-cancel">Cancel</button>
-        <button type="submit" class="primary">Add person</button>
+        <button type="button" class="ghost" id="sheet-cancel">${t("cancel")}</button>
+        <button type="submit" class="primary">${t("add_person_action")}</button>
       </div>
     `;
 
@@ -1189,7 +1459,7 @@ function openSheet(type) {
         const telegramUsername = normalizeUsername(formData.get("telegram_username"));
         const dateOfBirth = String(formData.get("date_of_birth") || "").trim();
         if (!telegramUsername || !dateOfBirth) {
-          alert("Telegram username and date of birth are required.");
+          alert(t("telegram_required_error"));
           return;
         }
         const fieldsPayload = {
@@ -1232,6 +1502,7 @@ function openSheet(type) {
 }
 
 async function initialize() {
+  applyStaticTranslations();
   if (tg) {
     tg.ready();
     tg.expand();
@@ -1246,7 +1517,7 @@ async function initialize() {
     devContinue.onclick = async () => {
       const value = Number(devInput.value);
       if (!value) {
-        alert("Enter a valid Telegram user id.");
+        alert(t("enter_valid_tg_id"));
         return;
       }
       tgId = value;
