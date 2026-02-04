@@ -1,19 +1,29 @@
 const API_BASE = "/api";
 
-const gridsList = document.getElementById("grids-list");
-const peopleList = document.getElementById("people-list");
-const emptyState = document.getElementById("empty-state");
-const peopleTitle = document.getElementById("people-title");
-const peopleSubtitle = document.getElementById("people-subtitle");
+const map = document.getElementById("map");
+const mapLines = document.getElementById("map-lines");
+const mapNodes = document.getElementById("map-nodes");
+const mapEmpty = document.getElementById("map-empty");
+
 const userBadge = document.getElementById("user-badge");
 const devBanner = document.getElementById("dev-banner");
 const devInput = document.getElementById("dev-tg-id");
 const devContinue = document.getElementById("dev-continue");
 
+const fab = document.getElementById("fab");
+const fabMenu = document.getElementById("fab-menu");
+const addGridBtn = document.getElementById("add-grid-btn");
+const addPersonBtn = document.getElementById("add-person-btn");
+
+const sheet = document.getElementById("sheet");
+const sheetBackdrop = document.getElementById("sheet-backdrop");
+const sheetTitle = document.getElementById("sheet-title");
+const sheetForm = document.getElementById("sheet-form");
+const sheetClose = document.getElementById("sheet-close");
+
 let tgId = null;
 let grids = [];
 let people = [];
-let currentGridId = null;
 
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
@@ -65,163 +75,295 @@ async function fetchJson(url, options = {}) {
 
 async function loadGrids() {
   grids = await fetchJson(`${API_BASE}/grids?tg_id=${tgId}`);
-  if (currentGridId && !grids.find((grid) => grid.id === currentGridId)) {
-    currentGridId = null;
-  }
-  if (!currentGridId && grids.length) {
-    currentGridId = grids[0].id;
-  }
-  renderGrids();
-  updatePeopleHeader();
 }
 
 async function loadPeople() {
-  if (!currentGridId) {
-    people = [];
-    renderPeople();
-    return;
-  }
-  people = await fetchJson(
-    `${API_BASE}/people?tg_id=${tgId}&grid_id=${currentGridId}`
-  );
-  renderPeople();
+  people = await fetchJson(`${API_BASE}/people?tg_id=${tgId}`);
 }
 
-function renderGrids() {
-  gridsList.innerHTML = "";
-  if (!grids.length) {
-    gridsList.innerHTML = "<p class=\"muted\">No grids yet.</p>";
-    emptyState.classList.remove("hidden");
-    return;
+async function refreshData() {
+  await loadGrids();
+  await loadPeople();
+  renderMap();
+}
+
+function polarPoint(center, radius, angle) {
+  return {
+    x: center.x + radius * Math.cos(angle),
+    y: center.y + radius * Math.sin(angle),
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function shortLabel(text, limit = 8) {
+  const safe = String(text || "").trim();
+  if (safe.length <= limit) {
+    return safe;
+  }
+  return `${safe.slice(0, limit - 1)}...`;
+}
+
+function drawLine(from, to, className) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", from.x);
+  line.setAttribute("y1", from.y);
+  line.setAttribute("x2", to.x);
+  line.setAttribute("y2", to.y);
+  if (className) {
+    className
+      .split(" ")
+      .filter(Boolean)
+      .forEach((name) => line.classList.add(name));
+  }
+  mapLines.appendChild(line);
+}
+
+function createNode({ type, x, y, label, subtitle, color, emoji, title }) {
+  const node = document.createElement("div");
+  node.className = `node ${type}`;
+  node.style.left = `${x}px`;
+  node.style.top = `${y}px`;
+  if (color) {
+    node.style.background = color;
+  }
+  if (title) {
+    node.title = title;
   }
 
-  grids.forEach((grid) => {
-    const card = document.createElement("div");
-    card.className = "grid-card";
-    if (grid.id === currentGridId) {
-      card.classList.add("active");
-    }
-    card.innerHTML = `
-      <div class="grid-card-header">
-        <div class="grid-color" style="background:${grid.color}"></div>
-        <div>
-          <div class="grid-title">${escapeHTML(grid.title)}</div>
-          <div class="grid-meta">${grid.people_count} people</div>
-        </div>
-      </div>
-      <div class="grid-actions">
-        <button class="ghost danger" data-action="delete">Delete</button>
-      </div>
-    `;
-    card.addEventListener("click", (event) => {
-      const action = event.target.dataset.action;
-      if (action === "delete") {
-        event.stopPropagation();
-        deleteGrid(grid.id);
-        return;
-      }
-      selectGrid(grid.id);
+  if (type === "person") {
+    node.textContent = emoji || "🙂";
+    return node;
+  }
+
+  const titleEl = document.createElement("div");
+  titleEl.className = "node-title";
+  titleEl.textContent = label;
+  node.appendChild(titleEl);
+
+  if (subtitle) {
+    const subEl = document.createElement("div");
+    subEl.className = "node-sub";
+    subEl.textContent = subtitle;
+    node.appendChild(subEl);
+  }
+
+  return node;
+}
+
+function placePeopleRing(group, anchor, radius, options = {}) {
+  if (!group.length) {
+    return;
+  }
+  const startAngle = -Math.PI / 2;
+  const count = group.length;
+  group.forEach((person, index) => {
+    const angle = startAngle + (index / count) * Math.PI * 2;
+    const point = polarPoint(anchor, radius, angle);
+    drawLine(anchor, point, options.lineClass || "line-person");
+    const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+    const node = createNode({
+      type: "person",
+      x: point.x,
+      y: point.y,
+      emoji,
+      title: person.full_name,
     });
-    gridsList.appendChild(card);
+    mapNodes.appendChild(node);
   });
 }
 
-function renderPeople() {
-  peopleList.innerHTML = "";
-  if (!currentGridId) {
-    emptyState.classList.remove("hidden");
-    updatePeopleHeader();
+function renderMap() {
+  if (!map) {
     return;
   }
-  emptyState.classList.add("hidden");
-
-  if (!people.length) {
-    peopleList.innerHTML = "<p class=\"muted\">No people yet.</p>";
+  const rect = map.getBoundingClientRect();
+  const width = rect.width;
+  const height = rect.height;
+  if (!width || !height) {
     return;
   }
 
-  people.forEach((person) => {
-    const card = document.createElement("div");
-    card.className = "person-card";
+  mapLines.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  mapLines.setAttribute("width", width);
+  mapLines.setAttribute("height", height);
+  mapLines.innerHTML = "";
+  mapNodes.innerHTML = "";
 
-    const fields = person.fields || {};
-    const fieldItems = Object.keys(fields)
-      .map(
-        (key) =>
-          `<div>${escapeHTML(key)}: ${escapeHTML(String(fields[key]))}</div>`
-      )
-      .join("");
-
-    card.innerHTML = `
-      <div class="person-name">${escapeHTML(person.full_name)}</div>
-      <div class="field-list">${fieldItems || "No extra fields"}</div>
-      <div class="person-actions">
-        <button class="ghost danger" data-action="delete">Delete</button>
-      </div>
-    `;
-
-    card.addEventListener("click", (event) => {
-      const action = event.target.dataset.action;
-      if (action === "delete") {
-        event.stopPropagation();
-        deletePerson(person.id);
-      }
-    });
-
-    peopleList.appendChild(card);
+  const center = { x: width / 2, y: height / 2 };
+  const userNode = createNode({
+    type: "user",
+    x: center.x,
+    y: center.y,
+    label: "USER",
+    subtitle: tgId ? `#${String(tgId).slice(-4)}` : "",
+    title: tgId ? `User ${tgId}` : "You",
   });
-}
+  mapNodes.appendChild(userNode);
 
-function selectGrid(gridId) {
-  currentGridId = gridId;
-  updatePeopleHeader();
-  loadPeople();
-  renderGrids();
-}
-
-function updatePeopleHeader() {
-  const selectedGrid = grids.find((grid) => grid.id === currentGridId);
-  if (selectedGrid) {
-    peopleTitle.textContent = selectedGrid.title;
-    peopleSubtitle.textContent =
-      selectedGrid.description || "People in this grid";
+  if (!grids.length && !people.length) {
+    mapEmpty.classList.remove("hidden");
   } else {
-    peopleTitle.textContent = "People";
-    peopleSubtitle.textContent = "Pick a grid to see who is inside.";
+    mapEmpty.classList.add("hidden");
   }
-}
 
-async function deleteGrid(gridId) {
-  if (!confirm("Delete this grid? People will be unassigned.")) {
-    return;
-  }
-  try {
-    await fetchJson(`${API_BASE}/grids/${gridId}?tg_id=${tgId}`, {
-      method: "DELETE",
-    });
-    if (currentGridId === gridId) {
-      currentGridId = null;
+  const peopleByGrid = new Map();
+  const unassigned = [];
+  people.forEach((person) => {
+    if (person.grid_id) {
+      if (!peopleByGrid.has(person.grid_id)) {
+        peopleByGrid.set(person.grid_id, []);
+      }
+      peopleByGrid.get(person.grid_id).push(person);
+    } else {
+      unassigned.push(person);
     }
-    await loadGrids();
-    await loadPeople();
-  } catch (error) {
-    alert(error.message);
+  });
+
+  placePeopleRing(unassigned, center, Math.min(width, height) * 0.16, {
+    lineClass: "line-person line-dashed",
+  });
+
+  const gridCount = grids.length;
+  const gridRadius = Math.min(width, height) * 0.28;
+  const startAngle = -Math.PI / 2;
+
+  grids.forEach((grid, index) => {
+    const angle = gridCount ? startAngle + (index / gridCount) * Math.PI * 2 : 0;
+    const point = polarPoint(center, gridRadius, angle);
+    drawLine(center, point, "line-grid");
+
+    const gridNode = createNode({
+      type: "grid",
+      x: point.x,
+      y: point.y,
+      label: shortLabel(grid.title),
+      subtitle: `${grid.people_count} people`,
+      color: grid.color || "#f07a2a",
+      title: grid.title,
+    });
+    mapNodes.appendChild(gridNode);
+
+    const group = peopleByGrid.get(grid.id) || [];
+    if (group.length) {
+      const ring = clamp(54 + group.length * 6, 58, 120);
+      placePeopleRing(group, point, ring, { lineClass: "line-person" });
+    }
+  });
+}
+
+function setFabOpen(open) {
+  if (open) {
+    fabMenu.classList.remove("hidden");
+    fab.classList.add("is-open");
+  } else {
+    fabMenu.classList.add("hidden");
+    fab.classList.remove("is-open");
   }
 }
 
-async function deletePerson(personId) {
-  if (!confirm("Delete this person?")) {
-    return;
+function closeSheet() {
+  sheet.classList.add("hidden");
+  sheetBackdrop.classList.add("hidden");
+  sheetForm.innerHTML = "";
+}
+
+function openSheet(type) {
+  sheetTitle.textContent = type === "grid" ? "New grid" : "New person";
+  if (type === "grid") {
+    sheetForm.innerHTML = `
+      <label>
+        Title
+        <input name="title" required placeholder="Gym" />
+      </label>
+      <label>
+        Description
+        <input name="description" placeholder="Friends from the gym" />
+      </label>
+      <label>
+        Color
+        <input name="color" type="color" value="#f07a2a" />
+      </label>
+      <div class="sheet-actions">
+        <button type="button" class="ghost" id="sheet-cancel">Cancel</button>
+        <button type="submit" class="primary">Create grid</button>
+      </div>
+    `;
+  } else {
+    const options = [
+      `<option value="">Unassigned</option>`,
+      ...grids.map((grid) => `<option value="${grid.id}">${escapeHTML(grid.title)}</option>`),
+    ].join("");
+
+    sheetForm.innerHTML = `
+      <label>
+        Full name
+        <input name="full_name" required placeholder="New friend" />
+      </label>
+      <label>
+        Emoji
+        <input name="emoji" placeholder="🙂" maxlength="2" />
+      </label>
+      <label>
+        Grid
+        <select name="grid_id">${options}</select>
+      </label>
+      <div class="sheet-actions">
+        <button type="button" class="ghost" id="sheet-cancel">Cancel</button>
+        <button type="submit" class="primary">Add person</button>
+      </div>
+    `;
   }
-  try {
-    await fetchJson(`${API_BASE}/people/${personId}?tg_id=${tgId}`, {
-      method: "DELETE",
-    });
-    await loadGrids();
-    await loadPeople();
-  } catch (error) {
-    alert(error.message);
+
+  sheetForm.onsubmit = async (event) => {
+    event.preventDefault();
+    const formData = new FormData(sheetForm);
+
+    try {
+      if (type === "grid") {
+        const payload = {
+          tg_id: tgId,
+          title: formData.get("title"),
+          description: formData.get("description"),
+          color: formData.get("color"),
+        };
+        await fetchJson(`${API_BASE}/grids`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const emojiInput = String(formData.get("emoji") || "").trim();
+        const gridValue = formData.get("grid_id");
+        const payload = {
+          tg_id: tgId,
+          full_name: formData.get("full_name"),
+          fields: {
+            emoji: emojiInput || "🙂",
+          },
+          grid_id: gridValue ? Number(gridValue) : null,
+        };
+        await fetchJson(`${API_BASE}/people`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
+
+      closeSheet();
+      await refreshData();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const cancelBtn = sheetForm.querySelector("#sheet-cancel");
+  if (cancelBtn) {
+    cancelBtn.onclick = closeSheet;
   }
+
+  sheet.classList.remove("hidden");
+  sheetBackdrop.classList.remove("hidden");
 }
 
 async function initialize() {
@@ -241,14 +383,46 @@ async function initialize() {
       tgId = value;
       devBanner.classList.add("hidden");
       setBadge();
-      await loadGrids();
-      await loadPeople();
+      await refreshData();
     };
   } else {
     setBadge();
-    await loadGrids();
-    await loadPeople();
+    await refreshData();
   }
 }
+
+fab.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const isOpen = !fabMenu.classList.contains("hidden");
+  setFabOpen(!isOpen);
+});
+
+fabMenu.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+document.addEventListener("click", () => {
+  setFabOpen(false);
+});
+
+addGridBtn.addEventListener("click", () => {
+  setFabOpen(false);
+  openSheet("grid");
+});
+
+addPersonBtn.addEventListener("click", () => {
+  setFabOpen(false);
+  openSheet("person");
+});
+
+sheetClose.addEventListener("click", closeSheet);
+
+sheetBackdrop.addEventListener("click", closeSheet);
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(renderMap, 120);
+});
 
 initialize();
