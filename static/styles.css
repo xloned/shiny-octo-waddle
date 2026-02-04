@@ -125,6 +125,7 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   background: var(--accent);
+  cursor: pointer;
 }
 
 .node.grid .node-title {
@@ -294,6 +295,7 @@ button {
   justify-items: center;
   text-align: center;
   padding: 8px 0 4px;
+  border-radius: 18px;
 }
 
 .person-emoji {
@@ -325,6 +327,44 @@ button {
   overflow: hidden;
   border: 1px solid var(--border);
   background: #fff;
+}
+
+.grid-card {
+  display: grid;
+  gap: 14px;
+}
+
+.grid-hero {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 18px;
+  color: #fff;
+}
+
+.grid-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.grid-sub {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.grid-meta {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.grid-meta-value {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .person-field {
@@ -376,6 +416,46 @@ button {
   font-family: inherit;
   color: var(--text);
   background: #fff;
+}
+
+.palette {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.palette-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.palette-note {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.palette-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.palette-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  box-shadow: 0 8px 16px rgba(31, 28, 25, 0.12);
+}
+
+.palette-swatch.is-selected {
+  border-color: #111;
+  transform: scale(1.05);
 }
 
 .field-group {
@@ -447,6 +527,14 @@ button {
 
 .ghost.full {
   width: 100%;
+}
+
+.danger {
+  background: #ef476f;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
 }
 
 button:disabled {

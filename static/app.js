@@ -1,5 +1,15 @@
 const API_BASE = "/api";
 const MAX_CUSTOM_FIELDS = 20;
+const PROFILE_PALETTE = [
+  "#f3c06a",
+  "#f2a07b",
+  "#e76f51",
+  "#9c89ff",
+  "#5c7cfa",
+  "#2a9d8f",
+  "#52b788",
+  "#ef476f",
+];
 
 const map = document.getElementById("map");
 const mapViewport = document.getElementById("map-viewport");
@@ -234,6 +244,33 @@ function setupCustomFields(container, countEl, addBtn, initialFields = []) {
   return () => collectCustomFields(container);
 }
 
+function setupPalette(container, input) {
+  if (!container || !input) {
+    return;
+  }
+  container.innerHTML = "";
+  const setSelected = (button, color) => {
+    container
+      .querySelectorAll(".palette-swatch")
+      .forEach((el) => el.classList.remove("is-selected"));
+    button.classList.add("is-selected");
+    input.value = color;
+  };
+
+  PROFILE_PALETTE.forEach((color, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "palette-swatch";
+    button.style.background = color;
+    button.setAttribute("aria-label", `Select ${color}`);
+    button.addEventListener("click", () => setSelected(button, color));
+    container.appendChild(button);
+    if (index === 0) {
+      setSelected(button, color);
+    }
+  });
+}
+
 function drawLine(from, to, className) {
   const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
   line.setAttribute("x1", from.x);
@@ -398,7 +435,7 @@ function renderMap() {
     const fallback = polarPoint(center, gridRadius, angle);
     const stored = getStoredPosition(`grid-${grid.id}`);
     const pos = stored || fallback;
-    createNode({
+    const node = createNode({
       key: `grid-${grid.id}`,
       type: "grid",
       x: pos.x,
@@ -408,6 +445,7 @@ function renderMap() {
       color: grid.color || "#f07a2a",
       title: grid.title,
     });
+    attachGridDetails(node, grid);
   });
 
   const peopleByGrid = new Map();
@@ -431,12 +469,15 @@ function renderMap() {
     const stored = getStoredPosition(`person-${person.id}`);
     const pos = stored || fallback;
     const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+    const profileBg =
+      person.fields && person.fields.profile_bg ? person.fields.profile_bg : null;
     const node = createNode({
       key: `person-${person.id}`,
       type: "person",
       x: pos.x,
       y: pos.y,
       emoji,
+      color: profileBg,
       title: person.full_name,
     });
     attachPersonDetails(node, person);
@@ -456,12 +497,15 @@ function renderMap() {
       const stored = getStoredPosition(`person-${person.id}`);
       const pos = stored || fallback;
       const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+      const profileBg =
+        person.fields && person.fields.profile_bg ? person.fields.profile_bg : null;
       const node = createNode({
         key: `person-${person.id}`,
         type: "person",
         x: pos.x,
         y: pos.y,
         emoji,
+        color: profileBg,
         title: person.full_name,
       });
       attachPersonDetails(node, person);
@@ -513,7 +557,9 @@ function attachLongPressDrag(node, key) {
 
     const startDrag = () => {
       isDragging = true;
-      node.__wasDragging = true;
+      if (pointerType === "touch") {
+        node.__wasDragging = true;
+      }
       node.classList.add("is-dragging");
       const canvasPoint = getCanvasPoint(lastPoint.x, lastPoint.y);
       const current = nodePositions.get(key) || canvasPoint;
@@ -550,6 +596,7 @@ function attachLongPressDrag(node, key) {
       x: canvasPoint.x + offset.x,
       y: canvasPoint.y + offset.y,
     };
+    node.__wasDragging = true;
     setNodePosition(key, nextPos);
     renderLines();
   });
@@ -595,8 +642,10 @@ function openPersonDetails(person) {
   if (!person) {
     return;
   }
-  const emoji =
-    person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+    const emoji =
+      person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+    const profileBg =
+      person.fields && person.fields.profile_bg ? person.fields.profile_bg : "#f3c06a";
   const gridTitle = person.grid_id
     ? grids.find((grid) => grid.id === person.grid_id)?.title
     : null;
@@ -607,7 +656,7 @@ function openPersonDetails(person) {
   sheetForm.onsubmit = null;
   sheetForm.innerHTML = `
     <div class="person-card">
-      <div class="person-hero">
+      <div class="person-hero" style="background: ${escapeHTML(profileBg)};">
         <div class="person-emoji">${escapeHTML(emoji)}</div>
         <div class="person-name">${escapeHTML(person.full_name)}</div>
         <div class="person-sub">
@@ -623,6 +672,7 @@ function openPersonDetails(person) {
           : ""
       }
       <div class="sheet-actions">
+        <button type="button" class="danger" id="delete-person">Delete</button>
         <button type="button" class="primary" id="sheet-ok">OK</button>
       </div>
     </div>
@@ -644,6 +694,24 @@ function openPersonDetails(person) {
     okBtn.onclick = closeSheet;
   }
 
+  const deleteBtn = sheetForm.querySelector("#delete-person");
+  if (deleteBtn) {
+    deleteBtn.onclick = async () => {
+      if (!confirm(`Delete ${person.full_name}?`)) {
+        return;
+      }
+      try {
+        await fetchJson(`${API_BASE}/people/${person.id}?tg_id=${tgId}`, {
+          method: "DELETE",
+        });
+        closeSheet();
+        await refreshData();
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+  }
+
   sheet.classList.remove("hidden");
   sheetBackdrop.classList.remove("hidden");
 }
@@ -659,6 +727,72 @@ function attachPersonDetails(node, person) {
       return;
     }
     openPersonDetails(person);
+  });
+}
+
+function openGridDetails(grid) {
+  if (!grid) {
+    return;
+  }
+  sheetTitle.textContent = grid.title;
+  sheetForm.onsubmit = null;
+  sheetForm.innerHTML = `
+    <div class="grid-card">
+      <div class="grid-hero" style="background: ${escapeHTML(grid.color || "#f07a2a")};">
+        <div class="grid-title">${escapeHTML(grid.title)}</div>
+        <div class="grid-sub">${escapeHTML(grid.description || "No description")}</div>
+      </div>
+      <div class="grid-meta">
+        <div>
+          <span class="grid-meta-label">People</span>
+          <span class="grid-meta-value">${grid.people_count}</span>
+        </div>
+      </div>
+      <div class="sheet-actions">
+        <button type="button" class="danger" id="delete-grid">Delete</button>
+        <button type="button" class="primary" id="sheet-ok">OK</button>
+      </div>
+    </div>
+  `;
+
+  const okBtn = sheetForm.querySelector("#sheet-ok");
+  if (okBtn) {
+    okBtn.onclick = closeSheet;
+  }
+
+  const deleteBtn = sheetForm.querySelector("#delete-grid");
+  if (deleteBtn) {
+    deleteBtn.onclick = async () => {
+      if (!confirm(`Delete grid "${grid.title}"?`)) {
+        return;
+      }
+      try {
+        await fetchJson(`${API_BASE}/grids/${grid.id}?tg_id=${tgId}`, {
+          method: "DELETE",
+        });
+        closeSheet();
+        await refreshData();
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+  }
+
+  sheet.classList.remove("hidden");
+  sheetBackdrop.classList.remove("hidden");
+}
+
+function attachGridDetails(node, grid) {
+  if (!node) {
+    return;
+  }
+  node.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (node.__wasDragging) {
+      node.__wasDragging = false;
+      return;
+    }
+    openGridDetails(grid);
   });
 }
 
@@ -790,6 +924,14 @@ function openSheet(type) {
         Emoji
         <input name="emoji" placeholder="🙂" maxlength="2" />
       </label>
+      <div class="palette">
+        <div class="palette-header">
+          <span>Profile background</span>
+          <span class="palette-note">Pick a color</span>
+        </div>
+        <div class="palette-options" id="palette-options"></div>
+        <input type="hidden" name="profile_bg" id="profile-bg" />
+      </div>
       <label>
         Grid
         <select name="grid_id">${options}</select>
@@ -817,6 +959,9 @@ function openSheet(type) {
     const fieldsCount = sheetForm.querySelector("#custom-fields-count");
     const addFieldBtn = sheetForm.querySelector("#add-field");
     getCustomFields = setupCustomFields(fieldsContainer, fieldsCount, addFieldBtn);
+    const paletteContainer = sheetForm.querySelector("#palette-options");
+    const profileInput = sheetForm.querySelector("#profile-bg");
+    setupPalette(paletteContainer, profileInput);
   }
 
   sheetForm.onsubmit = async (event) => {
@@ -839,11 +984,15 @@ function openSheet(type) {
         const emojiInput = String(formData.get("emoji") || "").trim();
         const gridValue = formData.get("grid_id");
         const customFields = getCustomFields();
+        const profileBg = String(formData.get("profile_bg") || "").trim();
         const fieldsPayload = {
           emoji: emojiInput || "🙂",
         };
         if (customFields.length) {
           fieldsPayload.custom_fields = customFields;
+        }
+        if (profileBg) {
+          fieldsPayload.profile_bg = profileBg;
         }
         const payload = {
           tg_id: tgId,
