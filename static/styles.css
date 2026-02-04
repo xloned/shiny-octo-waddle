@@ -17,86 +17,37 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
   background: radial-gradient(circle at top left, #ffffff, var(--bg)) fixed;
   color: var(--text);
-  min-height: 100vh;
-}
-
-.app {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-.topbar {
-  display: flex;
-  gap: 24px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
-.topbar h1 {
-  margin: 0 0 6px 0;
-  font-size: 32px;
-}
-
-.subtitle {
-  margin: 0;
-  color: var(--muted);
-}
-
-.badge {
-  background: var(--bg-accent);
-  padding: 8px 14px;
-  border-radius: 999px;
-  font-size: 13px;
-}
-
-.dev-banner {
-  background: #fff4e6;
-  border: 1px solid #ffd7b3;
-  padding: 12px 16px;
-  border-radius: 14px;
-  margin-bottom: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.dev-input {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.dev-input input {
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  font-family: inherit;
-}
-
-.map-shell {
-  position: relative;
 }
 
 .map {
-  position: relative;
-  height: min(72vh, 640px);
-  min-height: 520px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  position: fixed;
+  inset: 0;
   background:
     radial-gradient(circle at 18% 18%, rgba(47, 110, 219, 0.12), transparent 45%),
     radial-gradient(circle at 82% 82%, rgba(240, 122, 42, 0.14), transparent 48%),
     linear-gradient(135deg, #f8f9ff 0%, #f9f4ec 100%);
-  box-shadow: var(--shadow);
   overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.map-viewport {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
 }
 
 .map-lines {
@@ -141,11 +92,17 @@ body {
   justify-content: center;
   text-align: center;
   box-shadow: 0 12px 24px rgba(31, 28, 25, 0.16);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.node.is-dragging {
+  transform: translate(-50%, -50%) scale(1.04);
+  box-shadow: 0 18px 30px rgba(31, 28, 25, 0.2);
 }
 
 .node.user {
-  width: 150px;
-  height: 150px;
+  width: 140px;
+  height: 140px;
   color: #fff;
   background: radial-gradient(circle at 30% 30%, #5e8cff, #2b5ec9);
   letter-spacing: 1px;
@@ -167,6 +124,7 @@ body {
   color: #fff;
   font-weight: 600;
   text-transform: uppercase;
+  background: var(--accent);
 }
 
 .node.grid .node-title {
@@ -188,23 +146,33 @@ body {
   border: 2px solid #fff;
 }
 
-.map-empty {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  color: var(--muted);
-  pointer-events: none;
+.dev-banner {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  background: #fff4e6;
+  border: 1px solid #ffd7b3;
+  padding: 12px 16px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 30;
 }
 
-.map-empty h3 {
-  margin: 0 0 8px 0;
-  font-size: 20px;
+.dev-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
-.map-empty p {
-  margin: 0;
+.dev-input input {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-family: inherit;
 }
 
 button {
@@ -238,8 +206,8 @@ button {
 
 .fab {
   position: fixed;
-  left: 24px;
-  bottom: 24px;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(16px, env(safe-area-inset-bottom));
   width: 68px;
   height: 68px;
   border-radius: 50%;
@@ -251,7 +219,7 @@ button {
   justify-content: center;
   box-shadow: 0 20px 30px rgba(20, 35, 66, 0.2);
   transition: transform 0.2s ease;
-  z-index: 20;
+  z-index: 25;
 }
 
 .fab.is-open {
@@ -260,11 +228,11 @@ button {
 
 .fab-menu {
   position: fixed;
-  left: 24px;
-  bottom: 104px;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 80px);
   display: grid;
   gap: 10px;
-  z-index: 20;
+  z-index: 25;
 }
 
 .fab-item {
@@ -288,7 +256,7 @@ button {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
   margin: 0 auto;
   max-width: 520px;
   background: #fff;
@@ -344,17 +312,8 @@ button {
 }
 
 @media (max-width: 720px) {
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .map {
-    min-height: 480px;
-  }
-
   .node.user {
-    width: 128px;
-    height: 128px;
+    width: 124px;
+    height: 124px;
   }
 }

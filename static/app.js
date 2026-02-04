@@ -1,11 +1,10 @@
 const API_BASE = "/api";
 
 const map = document.getElementById("map");
+const mapViewport = document.getElementById("map-viewport");
 const mapLines = document.getElementById("map-lines");
 const mapNodes = document.getElementById("map-nodes");
-const mapEmpty = document.getElementById("map-empty");
 
-const userBadge = document.getElementById("user-badge");
 const devBanner = document.getElementById("dev-banner");
 const devInput = document.getElementById("dev-tg-id");
 const devContinue = document.getElementById("dev-continue");
@@ -25,6 +24,13 @@ let tgId = null;
 let grids = [];
 let people = [];
 
+let canvas = { width: 0, height: 0 };
+let pan = { x: 0, y: 0 };
+let hasPan = false;
+let positions = {};
+let nodePositions = new Map();
+let nodeElements = new Map();
+
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
 function escapeHTML(value) {
@@ -37,15 +43,6 @@ function escapeHTML(value) {
     .replace(/'/g, "&#039;");
 }
 
-function setBadge() {
-  if (!tgId) {
-    userBadge.classList.add("hidden");
-    return;
-  }
-  userBadge.textContent = `User ${tgId}`;
-  userBadge.classList.remove("hidden");
-}
-
 function getTgId() {
   if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
     return tg.initDataUnsafe.user.id;
@@ -56,6 +53,419 @@ function getTgId() {
     return Number(value);
   }
   return null;
+}
+
+function positionsKey() {
+  return `friendmap_positions_${tgId || "guest"}`;
+}
+
+function loadPositions() {
+  try {
+    const raw = localStorage.getItem(positionsKey());
+    positions = raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    positions = {};
+  }
+}
+
+function savePositions() {
+  try {
+    localStorage.setItem(positionsKey(), JSON.stringify(positions));
+  } catch (error) {
+    // Ignore write errors
+  }
+}
+
+function cleanupPositions() {
+  const validKeys = new Set();
+  grids.forEach((grid) => validKeys.add(`grid-${grid.id}`));
+  people.forEach((person) => validKeys.add(`person-${person.id}`));
+  let changed = false;
+  Object.keys(positions).forEach((key) => {
+    if (!validKeys.has(key)) {
+      delete positions[key];
+      changed = true;
+    }
+  });
+  if (changed) {
+    savePositions();
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function setCanvasSize() {
+  if (!map) {
+    return;
+  }
+  const rect = map.getBoundingClientRect();
+  const scale = 1.6;
+  canvas.width = rect.width * scale;
+  canvas.height = rect.height * scale;
+  mapViewport.style.width = `${canvas.width}px`;
+  mapViewport.style.height = `${canvas.height}px`;
+  mapLines.setAttribute("viewBox", `0 0 ${canvas.width} ${canvas.height}`);
+  mapLines.setAttribute("width", canvas.width);
+  mapLines.setAttribute("height", canvas.height);
+
+  if (!hasPan) {
+    pan.x = (rect.width - canvas.width) / 2;
+    pan.y = (rect.height - canvas.height) / 2;
+    hasPan = true;
+  }
+  applyPan();
+}
+
+function clampPan(x, y) {
+  const rect = map.getBoundingClientRect();
+  const margin = Math.min(rect.width, rect.height) * 0.15;
+  const minX = rect.width - canvas.width - margin;
+  const maxX = margin;
+  const minY = rect.height - canvas.height - margin;
+  const maxY = margin;
+  return {
+    x: clamp(x, minX, maxX),
+    y: clamp(y, minY, maxY),
+  };
+}
+
+function applyPan() {
+  const clamped = clampPan(pan.x, pan.y);
+  pan = clamped;
+  mapViewport.style.transform = `translate(${pan.x}px, ${pan.y}px)`;
+}
+
+function getCanvasPoint(clientX, clientY) {
+  const rect = map.getBoundingClientRect();
+  return {
+    x: clientX - rect.left - pan.x,
+    y: clientY - rect.top - pan.y,
+  };
+}
+
+function polarPoint(center, radius, angle) {
+  return {
+    x: center.x + radius * Math.cos(angle),
+    y: center.y + radius * Math.sin(angle),
+  };
+}
+
+function shortLabel(text, limit = 8) {
+  const safe = String(text || "").trim();
+  if (safe.length <= limit) {
+    return safe;
+  }
+  return `${safe.slice(0, limit - 1)}...`;
+}
+
+function drawLine(from, to, className) {
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", from.x);
+  line.setAttribute("y1", from.y);
+  line.setAttribute("x2", to.x);
+  line.setAttribute("y2", to.y);
+  if (className) {
+    className
+      .split(" ")
+      .filter(Boolean)
+      .forEach((name) => line.classList.add(name));
+  }
+  mapLines.appendChild(line);
+}
+
+function getStoredPosition(key) {
+  const stored = positions[key];
+  if (!stored || typeof stored.x !== "number" || typeof stored.y !== "number") {
+    return null;
+  }
+  return {
+    x: stored.x * canvas.width,
+    y: stored.y * canvas.height,
+  };
+}
+
+function updateStoredPosition(key, pos) {
+  positions[key] = {
+    x: pos.x / canvas.width,
+    y: pos.y / canvas.height,
+  };
+}
+
+function getNodeRadius(key) {
+  if (key.startsWith("grid-")) {
+    return 44;
+  }
+  if (key.startsWith("person-")) {
+    return 20;
+  }
+  return 72;
+}
+
+function clampNodePosition(key, pos) {
+  const radius = getNodeRadius(key);
+  return {
+    x: clamp(pos.x, radius, canvas.width - radius),
+    y: clamp(pos.y, radius, canvas.height - radius),
+  };
+}
+
+function setNodePosition(key, pos) {
+  const clamped = clampNodePosition(key, pos);
+  nodePositions.set(key, clamped);
+  const node = nodeElements.get(key);
+  if (node) {
+    node.style.left = `${clamped.x}px`;
+    node.style.top = `${clamped.y}px`;
+  }
+}
+
+function createNode({ key, type, x, y, label, subtitle, color, emoji, title }) {
+  const node = document.createElement("div");
+  node.className = `node ${type}`;
+  const initial = clampNodePosition(key, { x, y });
+  node.style.left = `${initial.x}px`;
+  node.style.top = `${initial.y}px`;
+  if (color) {
+    node.style.background = color;
+  }
+  if (title) {
+    node.title = title;
+  }
+
+  if (type === "person") {
+    node.textContent = emoji || "🙂";
+  } else {
+    const titleEl = document.createElement("div");
+    titleEl.className = "node-title";
+    titleEl.textContent = label;
+    node.appendChild(titleEl);
+
+    if (subtitle) {
+      const subEl = document.createElement("div");
+      subEl.className = "node-sub";
+      subEl.textContent = subtitle;
+      node.appendChild(subEl);
+    }
+  }
+
+  mapNodes.appendChild(node);
+  nodeElements.set(key, node);
+  nodePositions.set(key, { x: initial.x, y: initial.y });
+
+  if (type !== "user") {
+    attachLongPressDrag(node, key);
+  }
+}
+
+function renderLines() {
+  mapLines.innerHTML = "";
+  const userPos = nodePositions.get("user");
+  if (!userPos) {
+    return;
+  }
+
+  grids.forEach((grid) => {
+    const gridPos = nodePositions.get(`grid-${grid.id}`);
+    if (gridPos) {
+      drawLine(userPos, gridPos, "line-grid");
+    }
+  });
+
+  people.forEach((person) => {
+    const personPos = nodePositions.get(`person-${person.id}`);
+    if (!personPos) {
+      return;
+    }
+    const anchor = person.grid_id
+      ? nodePositions.get(`grid-${person.grid_id}`)
+      : userPos;
+    if (!anchor) {
+      return;
+    }
+    drawLine(
+      anchor,
+      personPos,
+      person.grid_id ? "line-person" : "line-person line-dashed"
+    );
+  });
+}
+
+function renderMap() {
+  if (!map) {
+    return;
+  }
+  setCanvasSize();
+  nodePositions.clear();
+  nodeElements.clear();
+  mapNodes.innerHTML = "";
+  mapLines.innerHTML = "";
+
+  const center = { x: canvas.width / 2, y: canvas.height / 2 };
+  createNode({
+    key: "user",
+    type: "user",
+    x: center.x,
+    y: center.y,
+    label: "USER",
+    subtitle: tgId ? `#${String(tgId).slice(-4)}` : "",
+    title: tgId ? `User ${tgId}` : "You",
+  });
+
+  const gridCount = grids.length;
+  const gridRadius = Math.min(canvas.width, canvas.height) * 0.28;
+  const startAngle = -Math.PI / 2;
+
+  grids.forEach((grid, index) => {
+    const angle = gridCount ? startAngle + (index / gridCount) * Math.PI * 2 : 0;
+    const fallback = polarPoint(center, gridRadius, angle);
+    const stored = getStoredPosition(`grid-${grid.id}`);
+    const pos = stored || fallback;
+    createNode({
+      key: `grid-${grid.id}`,
+      type: "grid",
+      x: pos.x,
+      y: pos.y,
+      label: shortLabel(grid.title),
+      subtitle: `${grid.people_count} people`,
+      color: grid.color || "#f07a2a",
+      title: grid.title,
+    });
+  });
+
+  const peopleByGrid = new Map();
+  const unassigned = [];
+  people.forEach((person) => {
+    if (person.grid_id) {
+      if (!peopleByGrid.has(person.grid_id)) {
+        peopleByGrid.set(person.grid_id, []);
+      }
+      peopleByGrid.get(person.grid_id).push(person);
+    } else {
+      unassigned.push(person);
+    }
+  });
+
+  const unassignedRadius = Math.min(canvas.width, canvas.height) * 0.18;
+  unassigned.forEach((person, index) => {
+    const count = unassigned.length || 1;
+    const angle = startAngle + (index / count) * Math.PI * 2;
+    const fallback = polarPoint(center, unassignedRadius, angle);
+    const stored = getStoredPosition(`person-${person.id}`);
+    const pos = stored || fallback;
+    const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+    createNode({
+      key: `person-${person.id}`,
+      type: "person",
+      x: pos.x,
+      y: pos.y,
+      emoji,
+      title: person.full_name,
+    });
+  });
+
+  grids.forEach((grid) => {
+    const anchor = nodePositions.get(`grid-${grid.id}`);
+    if (!anchor) {
+      return;
+    }
+    const group = peopleByGrid.get(grid.id) || [];
+    const ring = clamp(56 + group.length * 6, 60, 130);
+    group.forEach((person, index) => {
+      const count = group.length || 1;
+      const angle = startAngle + (index / count) * Math.PI * 2;
+      const fallback = polarPoint(anchor, ring, angle);
+      const stored = getStoredPosition(`person-${person.id}`);
+      const pos = stored || fallback;
+      const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
+      createNode({
+        key: `person-${person.id}`,
+        type: "person",
+        x: pos.x,
+        y: pos.y,
+        emoji,
+        title: person.full_name,
+      });
+    });
+  });
+
+  renderLines();
+}
+
+function attachLongPressDrag(node, key) {
+  let pressTimer = null;
+  let isDragging = false;
+  let startPoint = null;
+  let lastPoint = null;
+  let offset = { x: 0, y: 0 };
+
+  const clearPress = () => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  };
+
+  const stopDragging = () => {
+    clearPress();
+    if (isDragging) {
+      isDragging = false;
+      node.classList.remove("is-dragging");
+      updateStoredPosition(key, nodePositions.get(key));
+      savePositions();
+    }
+    startPoint = null;
+    lastPoint = null;
+  };
+
+  node.addEventListener("pointerdown", (event) => {
+    if (event.button && event.button !== 0) {
+      return;
+    }
+    event.stopPropagation();
+    node.setPointerCapture(event.pointerId);
+    startPoint = { x: event.clientX, y: event.clientY };
+    lastPoint = { ...startPoint };
+
+    pressTimer = setTimeout(() => {
+      isDragging = true;
+      node.classList.add("is-dragging");
+      const canvasPoint = getCanvasPoint(lastPoint.x, lastPoint.y);
+      const current = nodePositions.get(key) || canvasPoint;
+      offset = {
+        x: current.x - canvasPoint.x,
+        y: current.y - canvasPoint.y,
+      };
+    }, 320);
+  });
+
+  node.addEventListener("pointermove", (event) => {
+    lastPoint = { x: event.clientX, y: event.clientY };
+
+    if (!isDragging) {
+      if (!startPoint) {
+        return;
+      }
+      const dx = lastPoint.x - startPoint.x;
+      const dy = lastPoint.y - startPoint.y;
+      if (Math.hypot(dx, dy) > 8) {
+        clearPress();
+      }
+      return;
+    }
+
+    const canvasPoint = getCanvasPoint(lastPoint.x, lastPoint.y);
+    const nextPos = {
+      x: canvasPoint.x + offset.x,
+      y: canvasPoint.y + offset.y,
+    };
+    setNodePosition(key, nextPos);
+    renderLines();
+  });
+
+  node.addEventListener("pointerup", stopDragging);
+  node.addEventListener("pointercancel", stopDragging);
 }
 
 async function fetchJson(url, options = {}) {
@@ -84,174 +494,8 @@ async function loadPeople() {
 async function refreshData() {
   await loadGrids();
   await loadPeople();
+  cleanupPositions();
   renderMap();
-}
-
-function polarPoint(center, radius, angle) {
-  return {
-    x: center.x + radius * Math.cos(angle),
-    y: center.y + radius * Math.sin(angle),
-  };
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function shortLabel(text, limit = 8) {
-  const safe = String(text || "").trim();
-  if (safe.length <= limit) {
-    return safe;
-  }
-  return `${safe.slice(0, limit - 1)}...`;
-}
-
-function drawLine(from, to, className) {
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  line.setAttribute("x1", from.x);
-  line.setAttribute("y1", from.y);
-  line.setAttribute("x2", to.x);
-  line.setAttribute("y2", to.y);
-  if (className) {
-    className
-      .split(" ")
-      .filter(Boolean)
-      .forEach((name) => line.classList.add(name));
-  }
-  mapLines.appendChild(line);
-}
-
-function createNode({ type, x, y, label, subtitle, color, emoji, title }) {
-  const node = document.createElement("div");
-  node.className = `node ${type}`;
-  node.style.left = `${x}px`;
-  node.style.top = `${y}px`;
-  if (color) {
-    node.style.background = color;
-  }
-  if (title) {
-    node.title = title;
-  }
-
-  if (type === "person") {
-    node.textContent = emoji || "🙂";
-    return node;
-  }
-
-  const titleEl = document.createElement("div");
-  titleEl.className = "node-title";
-  titleEl.textContent = label;
-  node.appendChild(titleEl);
-
-  if (subtitle) {
-    const subEl = document.createElement("div");
-    subEl.className = "node-sub";
-    subEl.textContent = subtitle;
-    node.appendChild(subEl);
-  }
-
-  return node;
-}
-
-function placePeopleRing(group, anchor, radius, options = {}) {
-  if (!group.length) {
-    return;
-  }
-  const startAngle = -Math.PI / 2;
-  const count = group.length;
-  group.forEach((person, index) => {
-    const angle = startAngle + (index / count) * Math.PI * 2;
-    const point = polarPoint(anchor, radius, angle);
-    drawLine(anchor, point, options.lineClass || "line-person");
-    const emoji = person.fields && person.fields.emoji ? person.fields.emoji : "🙂";
-    const node = createNode({
-      type: "person",
-      x: point.x,
-      y: point.y,
-      emoji,
-      title: person.full_name,
-    });
-    mapNodes.appendChild(node);
-  });
-}
-
-function renderMap() {
-  if (!map) {
-    return;
-  }
-  const rect = map.getBoundingClientRect();
-  const width = rect.width;
-  const height = rect.height;
-  if (!width || !height) {
-    return;
-  }
-
-  mapLines.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  mapLines.setAttribute("width", width);
-  mapLines.setAttribute("height", height);
-  mapLines.innerHTML = "";
-  mapNodes.innerHTML = "";
-
-  const center = { x: width / 2, y: height / 2 };
-  const userNode = createNode({
-    type: "user",
-    x: center.x,
-    y: center.y,
-    label: "USER",
-    subtitle: tgId ? `#${String(tgId).slice(-4)}` : "",
-    title: tgId ? `User ${tgId}` : "You",
-  });
-  mapNodes.appendChild(userNode);
-
-  if (!grids.length && !people.length) {
-    mapEmpty.classList.remove("hidden");
-  } else {
-    mapEmpty.classList.add("hidden");
-  }
-
-  const peopleByGrid = new Map();
-  const unassigned = [];
-  people.forEach((person) => {
-    if (person.grid_id) {
-      if (!peopleByGrid.has(person.grid_id)) {
-        peopleByGrid.set(person.grid_id, []);
-      }
-      peopleByGrid.get(person.grid_id).push(person);
-    } else {
-      unassigned.push(person);
-    }
-  });
-
-  placePeopleRing(unassigned, center, Math.min(width, height) * 0.16, {
-    lineClass: "line-person line-dashed",
-  });
-
-  const gridCount = grids.length;
-  const gridRadius = Math.min(width, height) * 0.28;
-  const startAngle = -Math.PI / 2;
-
-  grids.forEach((grid, index) => {
-    const angle = gridCount ? startAngle + (index / gridCount) * Math.PI * 2 : 0;
-    const point = polarPoint(center, gridRadius, angle);
-    drawLine(center, point, "line-grid");
-
-    const gridNode = createNode({
-      type: "grid",
-      x: point.x,
-      y: point.y,
-      label: shortLabel(grid.title),
-      subtitle: `${grid.people_count} people`,
-      color: grid.color || "#f07a2a",
-      title: grid.title,
-    });
-    mapNodes.appendChild(gridNode);
-
-    const group = peopleByGrid.get(grid.id) || [];
-    if (group.length) {
-      const ring = clamp(54 + group.length * 6, 58, 120);
-      placePeopleRing(group, point, ring, { lineClass: "line-person" });
-    }
-  });
 }
 
 function setFabOpen(open) {
@@ -294,7 +538,9 @@ function openSheet(type) {
   } else {
     const options = [
       `<option value="">Unassigned</option>`,
-      ...grids.map((grid) => `<option value="${grid.id}">${escapeHTML(grid.title)}</option>`),
+      ...grids.map(
+        (grid) => `<option value="${grid.id}">${escapeHTML(grid.title)}</option>`
+      ),
     ].join("");
 
     sheetForm.innerHTML = `
@@ -372,6 +618,8 @@ async function initialize() {
     tg.expand();
   }
   tgId = getTgId();
+  loadPositions();
+
   if (!tgId) {
     devBanner.classList.remove("hidden");
     devContinue.onclick = async () => {
@@ -382,14 +630,69 @@ async function initialize() {
       }
       tgId = value;
       devBanner.classList.add("hidden");
-      setBadge();
+      loadPositions();
       await refreshData();
     };
   } else {
-    setBadge();
     await refreshData();
   }
 }
+
+const panState = {
+  active: false,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  originX: 0,
+  originY: 0,
+};
+
+map.addEventListener("pointerdown", (event) => {
+  if (event.button && event.button !== 0) {
+    return;
+  }
+  if (event.target.closest(".node")) {
+    return;
+  }
+  panState.active = true;
+  panState.pointerId = event.pointerId;
+  panState.startX = event.clientX;
+  panState.startY = event.clientY;
+  panState.originX = pan.x;
+  panState.originY = pan.y;
+  map.setPointerCapture(event.pointerId);
+});
+
+map.addEventListener("pointermove", (event) => {
+  if (!panState.active || event.pointerId !== panState.pointerId) {
+    return;
+  }
+  const dx = event.clientX - panState.startX;
+  const dy = event.clientY - panState.startY;
+  pan.x = panState.originX + dx;
+  pan.y = panState.originY + dy;
+  applyPan();
+});
+
+map.addEventListener("pointerup", (event) => {
+  if (event.pointerId === panState.pointerId) {
+    panState.active = false;
+  }
+});
+
+map.addEventListener("pointercancel", (event) => {
+  if (event.pointerId === panState.pointerId) {
+    panState.active = false;
+  }
+});
+
+map.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+  },
+  { passive: false }
+);
 
 fab.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -424,5 +727,29 @@ window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(renderMap, 120);
 });
+
+document.addEventListener(
+  "gesturestart",
+  (event) => {
+    event.preventDefault();
+  },
+  { passive: false }
+);
+
+document.addEventListener(
+  "gesturechange",
+  (event) => {
+    event.preventDefault();
+  },
+  { passive: false }
+);
+
+document.addEventListener(
+  "gestureend",
+  (event) => {
+    event.preventDefault();
+  },
+  { passive: false }
+);
 
 initialize();

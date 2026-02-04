@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
     <title>Friends MiniApp</title>
     <link rel="stylesheet" href="/static/styles.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -13,34 +16,20 @@
     />
   </head>
   <body>
-    <div class="app map-app">
-      <header class="topbar">
-        <div class="brand">
-          <h1>Friends Grid</h1>
-          <p class="subtitle">Map your people by gyms, schools, projects, or anything else.</p>
-        </div>
-        <div id="user-badge" class="badge hidden"></div>
-      </header>
-
-      <section id="dev-banner" class="dev-banner hidden">
-        <p>Dev mode: Telegram user id not found. Enter it to continue.</p>
-        <div class="dev-input">
-          <input id="dev-tg-id" type="number" min="1" placeholder="Telegram user id" />
-          <button id="dev-continue" class="primary">Continue</button>
-        </div>
-      </section>
-
-      <main class="map-shell">
-        <div id="map" class="map">
-          <svg id="map-lines" class="map-lines" aria-hidden="true"></svg>
-          <div id="map-nodes" class="map-nodes"></div>
-          <div id="map-empty" class="map-empty hidden">
-            <h3>Build your map</h3>
-            <p>Tap the + button to add your first grid or person.</p>
-          </div>
-        </div>
-      </main>
+    <div id="map" class="map">
+      <div id="map-viewport" class="map-viewport">
+        <svg id="map-lines" class="map-lines" aria-hidden="true"></svg>
+        <div id="map-nodes" class="map-nodes"></div>
+      </div>
     </div>
+
+    <section id="dev-banner" class="dev-banner hidden">
+      <p>Dev mode: Telegram user id not found. Enter it to continue.</p>
+      <div class="dev-input">
+        <input id="dev-tg-id" type="number" min="1" placeholder="Telegram user id" />
+        <button id="dev-continue" class="primary">Continue</button>
+      </div>
+    </section>
 
     <button id="fab" class="fab" type="button" aria-label="Add">+</button>
     <div id="fab-menu" class="fab-menu hidden">
