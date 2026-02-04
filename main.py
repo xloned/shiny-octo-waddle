@@ -11,7 +11,19 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func, select, update
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    delete,
+    func,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -89,6 +101,19 @@ class Person(Base):
     grid: Mapped[Optional[Grid]] = relationship(back_populates="people")
 
 
+class NodePosition(Base):
+    __tablename__ = "node_position"
+    __table_args__ = (UniqueConstraint("user_id", "node_type", "node_id", name="uq_node_position"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("tg_user.id", ondelete="CASCADE"), index=True)
+    node_type: Mapped[str] = mapped_column(String(20))
+    node_id: Mapped[int] = mapped_column(BigInteger)
+    x: Mapped[float] = mapped_column(Float)
+    y: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -159,6 +184,21 @@ class PersonOut(BaseModel):
     full_name: str
     fields: Dict[str, Any]
     grid_id: Optional[int]
+
+
+class PositionOut(BaseModel):
+    node_type: str
+    node_id: int
+    x: float
+    y: float
+
+
+class PositionUpsert(BaseModel):
+    tg_id: int
+    node_type: str
+    node_id: int
+    x: float = Field(..., ge=0.0, le=1.0)
+    y: float = Field(..., ge=0.0, le=1.0)
 
 
 app = FastAPI()
@@ -282,6 +322,13 @@ async def delete_grid(
         raise HTTPException(status_code=404, detail="Grid not found")
 
     await session.execute(update(Person).where(Person.grid_id == grid.id).values(grid_id=None))
+    await session.execute(
+        delete(NodePosition).where(
+            NodePosition.user_id == user.id,
+            NodePosition.node_type == "grid",
+            NodePosition.node_id == grid.id,
+        )
+    )
     await session.delete(grid)
     await session.commit()
     return {"status": "deleted"}
@@ -308,6 +355,78 @@ async def list_people(
         )
         for person in result.scalars().all()
     ]
+
+
+@app.get("/api/positions", response_model=List[PositionOut])
+async def list_positions(
+    tg_id: int = Query(..., ge=1),
+    session: AsyncSession = Depends(get_session),
+) -> List[PositionOut]:
+    user = await get_or_create_user(session, tg_id)
+    result = await session.execute(
+        select(NodePosition).where(NodePosition.user_id == user.id)
+    )
+    return [
+        PositionOut(
+            node_type=pos.node_type,
+            node_id=pos.node_id,
+            x=pos.x,
+            y=pos.y,
+        )
+        for pos in result.scalars().all()
+    ]
+
+
+@app.post("/api/positions", response_model=PositionOut)
+async def upsert_position(
+    payload: PositionUpsert,
+    session: AsyncSession = Depends(get_session),
+) -> PositionOut:
+    user = await get_or_create_user(session, payload.tg_id)
+    if payload.node_type not in {"grid", "person"}:
+        raise HTTPException(status_code=400, detail="Invalid node type")
+
+    if payload.node_type == "grid":
+        grid_result = await session.execute(
+            select(Grid).where(Grid.id == payload.node_id, Grid.user_id == user.id)
+        )
+        if not grid_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Grid not found")
+    else:
+        person_result = await session.execute(
+            select(Person).where(Person.id == payload.node_id, Person.user_id == user.id)
+        )
+        if not person_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Person not found")
+
+    result = await session.execute(
+        select(NodePosition).where(
+            NodePosition.user_id == user.id,
+            NodePosition.node_type == payload.node_type,
+            NodePosition.node_id == payload.node_id,
+        )
+    )
+    position = result.scalar_one_or_none()
+    if position:
+        position.x = payload.x
+        position.y = payload.y
+    else:
+        position = NodePosition(
+            user_id=user.id,
+            node_type=payload.node_type,
+            node_id=payload.node_id,
+            x=payload.x,
+            y=payload.y,
+        )
+        session.add(position)
+
+    await session.commit()
+    return PositionOut(
+        node_type=position.node_type,
+        node_id=position.node_id,
+        x=position.x,
+        y=position.y,
+    )
 
 
 @app.post("/api/people", response_model=PersonOut)
@@ -389,6 +508,13 @@ async def delete_person(
     person = result.scalar_one_or_none()
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
+    await session.execute(
+        delete(NodePosition).where(
+            NodePosition.user_id == user.id,
+            NodePosition.node_type == "person",
+            NodePosition.node_id == person.id,
+        )
+    )
     await session.delete(person)
     await session.commit()
     return {"status": "deleted"}

@@ -55,41 +55,31 @@ function getTgId() {
   return null;
 }
 
-function positionsKey() {
-  return `friendmap_positions_${tgId || "guest"}`;
-}
-
-function loadPositions() {
-  try {
-    const raw = localStorage.getItem(positionsKey());
-    positions = raw ? JSON.parse(raw) : {};
-  } catch (error) {
-    positions = {};
+function parseNodeKey(key) {
+  const parts = key.split("-");
+  if (parts.length !== 2) {
+    return null;
   }
-}
-
-function savePositions() {
-  try {
-    localStorage.setItem(positionsKey(), JSON.stringify(positions));
-  } catch (error) {
-    // Ignore write errors
+  const nodeType = parts[0];
+  const nodeId = Number(parts[1]);
+  if (!Number.isFinite(nodeId)) {
+    return null;
   }
+  if (nodeType !== "grid" && nodeType !== "person") {
+    return null;
+  }
+  return { node_type: nodeType, node_id: nodeId };
 }
 
 function cleanupPositions() {
   const validKeys = new Set();
   grids.forEach((grid) => validKeys.add(`grid-${grid.id}`));
   people.forEach((person) => validKeys.add(`person-${person.id}`));
-  let changed = false;
   Object.keys(positions).forEach((key) => {
     if (!validKeys.has(key)) {
       delete positions[key];
-      changed = true;
     }
   });
-  if (changed) {
-    savePositions();
-  }
 }
 
 function clamp(value, min, max) {
@@ -191,6 +181,7 @@ function updateStoredPosition(key, pos) {
     x: pos.x / canvas.width,
     y: pos.y / canvas.height,
   };
+  savePosition(key);
 }
 
 function getNodeRadius(key) {
@@ -399,6 +390,7 @@ function attachLongPressDrag(node, key) {
   let startPoint = null;
   let lastPoint = null;
   let offset = { x: 0, y: 0 };
+  let pointerType = "mouse";
 
   const clearPress = () => {
     if (pressTimer) {
@@ -413,7 +405,6 @@ function attachLongPressDrag(node, key) {
       isDragging = false;
       node.classList.remove("is-dragging");
       updateStoredPosition(key, nodePositions.get(key));
-      savePositions();
     }
     startPoint = null;
     lastPoint = null;
@@ -425,10 +416,11 @@ function attachLongPressDrag(node, key) {
     }
     event.stopPropagation();
     node.setPointerCapture(event.pointerId);
+    pointerType = event.pointerType || "mouse";
     startPoint = { x: event.clientX, y: event.clientY };
     lastPoint = { ...startPoint };
 
-    pressTimer = setTimeout(() => {
+    const startDrag = () => {
       isDragging = true;
       node.classList.add("is-dragging");
       const canvasPoint = getCanvasPoint(lastPoint.x, lastPoint.y);
@@ -437,7 +429,13 @@ function attachLongPressDrag(node, key) {
         x: current.x - canvasPoint.x,
         y: current.y - canvasPoint.y,
       };
-    }, 320);
+    };
+
+    if (pointerType === "touch") {
+      pressTimer = setTimeout(startDrag, 320);
+    } else {
+      startDrag();
+    }
   });
 
   node.addEventListener("pointermove", (event) => {
@@ -483,6 +481,50 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+async function loadPositions() {
+  if (!tgId) {
+    positions = {};
+    return;
+  }
+  try {
+    const list = await fetchJson(`${API_BASE}/positions?tg_id=${tgId}`);
+    positions = {};
+    list.forEach((item) => {
+      positions[`${item.node_type}-${item.node_id}`] = {
+        x: item.x,
+        y: item.y,
+      };
+    });
+  } catch (error) {
+    positions = {};
+  }
+}
+
+async function savePosition(key) {
+  if (!tgId) {
+    return;
+  }
+  const parsed = parseNodeKey(key);
+  const stored = positions[key];
+  if (!parsed || !stored) {
+    return;
+  }
+  try {
+    await fetchJson(`${API_BASE}/positions`, {
+      method: "POST",
+      body: JSON.stringify({
+        tg_id: tgId,
+        node_type: parsed.node_type,
+        node_id: parsed.node_id,
+        x: stored.x,
+        y: stored.y,
+      }),
+    });
+  } catch (error) {
+    // Ignore save errors for now
+  }
+}
+
 async function loadGrids() {
   grids = await fetchJson(`${API_BASE}/grids?tg_id=${tgId}`);
 }
@@ -492,8 +534,7 @@ async function loadPeople() {
 }
 
 async function refreshData() {
-  await loadGrids();
-  await loadPeople();
+  await Promise.all([loadGrids(), loadPeople(), loadPositions()]);
   cleanupPositions();
   renderMap();
 }
@@ -616,9 +657,11 @@ async function initialize() {
   if (tg) {
     tg.ready();
     tg.expand();
+    if (typeof tg.disableVerticalSwipes === "function") {
+      tg.disableVerticalSwipes();
+    }
   }
   tgId = getTgId();
-  loadPositions();
 
   if (!tgId) {
     devBanner.classList.remove("hidden");
@@ -630,7 +673,6 @@ async function initialize() {
       }
       tgId = value;
       devBanner.classList.add("hidden");
-      loadPositions();
       await refreshData();
     };
   } else {
@@ -688,6 +730,14 @@ map.addEventListener("pointercancel", (event) => {
 
 map.addEventListener(
   "wheel",
+  (event) => {
+    event.preventDefault();
+  },
+  { passive: false }
+);
+
+map.addEventListener(
+  "touchmove",
   (event) => {
     event.preventDefault();
   },
